@@ -99,9 +99,12 @@ test('admin: approve / block with audit allowed; cannot change role; cannot self
   await assertFails(updateDoc(doc(a, 'users/admin'), { accountStatus: 'BLOCKED' }));
   await assertFails(updateDoc(doc(a, 'users/pam'), { accountStatus: 'SUPER' }));
 });
-test('users: nobody can delete a user doc', async () => {
+test('users: only the owner can delete their own doc (account deletion)', async () => {
   await assertFails(deleteDoc(doc(db('admin'), 'users/pam')));
-  await assertFails(deleteDoc(doc(db('pam'), 'users/pam')));
+  await assertFails(deleteDoc(doc(db('dan'), 'users/pam')));
+  await assertFails(deleteDoc(doc(db(null), 'users/pam')));
+  await assertSucceeds(deleteDoc(doc(db('pam'), 'users/pam')));
+  await assertSucceeds(deleteDoc(doc(db('bad'), 'users/bad')));   // blocked users can still leave
 });
 
 // ------------------------------------------------------------------ settings

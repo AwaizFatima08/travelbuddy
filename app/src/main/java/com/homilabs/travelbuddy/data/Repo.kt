@@ -1,6 +1,7 @@
 package com.homilabs.travelbuddy.data
 
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.AggregateSource
@@ -152,6 +153,31 @@ object Repo {
         _stops.value = emptyList()
         stopsLoaded = false
         auth.signOut()
+    }
+
+    /**
+     * Deletes the signed-in user's account: confirms the password, cancels their unfinished rides,
+     * deletes their profile doc, then their sign-in. Past rides disappear via the 30-day auto-delete.
+     */
+    suspend fun deleteAccount(password: String) = withContext(NonCancellable) {
+        val user = auth.currentUser ?: throw AppError("Please log in again.")
+        val email = user.email ?: throw AppError("Please log in again.")
+        try {
+            user.reauthenticate(EmailAuthProvider.getCredential(email, password)).await()
+        } catch (e: Exception) {
+            throw AppError("Wrong password.")
+        }
+        runCatching {
+            myUpcoming(user.uid, limit = 50)
+                .filter { !it.isFinished && (it.isDriver(user.uid) || it.isPoster(user.uid)) }
+                .forEach { r ->
+                    if (r.status == RideStatus.OPEN && r.requests.isEmpty() && (r.type == RideType.OFFER || !r.hasDriver)) deleteRide(r.id)
+                    else setRideStatus(r.id, RideStatus.CANCELLED)
+                }
+        }
+        users.document(user.uid).delete().await()
+        user.delete().await()
+        logout()
     }
 
     fun userFlow(uid: String): Flow<UserState> = callbackFlow {

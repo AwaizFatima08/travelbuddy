@@ -49,6 +49,7 @@ import com.homilabs.travelbuddy.model.SeatStatus
 import com.homilabs.travelbuddy.model.Stop
 import com.homilabs.travelbuddy.util.Geo
 import com.homilabs.travelbuddy.util.Locator
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -217,4 +218,56 @@ fun Centered(content: @Composable ColumnScope.() -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) { content() }
+}
+
+/** "Delete my account" — asks for the password again, then deletes profile + sign-in. */
+@Composable
+fun DeleteAccountDialog(onDismiss: () -> Unit, onDeleted: () -> Unit = {}) {
+    val ctx = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Delete my account?") },
+        text = {
+            Column {
+                Text(
+                    "This permanently deletes your TravelBuddy profile and sign-in. Your open rides are cancelled. " +
+                        "Past rides are removed automatically within 30 days. This can't be undone."
+                )
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it }, singleLine = true,
+                    label = { Text("Your password") },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
+                ErrorNote(error)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = password.isNotEmpty() && !busy,
+                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                onClick = {
+                    busy = true; error = null
+                    scope.launch {
+                        try {
+                            com.homilabs.travelbuddy.service.DriverLocationService.stop(ctx)
+                            com.homilabs.travelbuddy.service.PassengerWaitService.stop(ctx)
+                            Repo.deleteAccount(password)
+                            ctx.toast("Your account was deleted.")
+                            onDeleted()
+                        } catch (e: Exception) {
+                            error = Repo.friendly(e)
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+            ) { Text(if (busy) "Deleting…" else "Delete forever") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Keep my account") } },
+    )
 }

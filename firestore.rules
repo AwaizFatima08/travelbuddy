@@ -33,7 +33,8 @@ service cloud.firestore {
                     || (signedIn() && request.auth.uid == uid
                         && changed().hasOnly(['name','phone','department','townshipLocation']));
 
-      allow delete: if false;
+      // In-app "Delete my account" (Google Play requirement). Admins delete in the console.
+      allow delete: if signedIn() && request.auth.uid == uid;
     }
 
     match /settings/{doc} {

@@ -10,8 +10,8 @@ import com.homilabs.travelbuddy.service.Notif
 class TravelBuddyApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        if (BuildConfig.DEBUG && BuildConfig.USE_EMULATOR) {
-            // Local test mode only (debug builds). Release builds always use the real project.
+        if (BuildConfig.USE_EMULATOR) {
+            // Local test mode only (debug -PtbEmulator and qa builds). Release always uses the real project.
             FirebaseFirestore.getInstance().useEmulator("127.0.0.1", 8185)
             FirebaseAuth.getInstance().useEmulator("127.0.0.1", 9199)
         }

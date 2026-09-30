@@ -34,7 +34,7 @@ import com.homilabs.travelbuddy.service.DriverLocationService
 import com.homilabs.travelbuddy.service.PassengerWaitService
 import com.homilabs.travelbuddy.util.BiometricGate
 
-const val PRIVACY_URL = "https://awaizfatima08.github.io/travelbuddy/privacy.html"
+const val PRIVACY_URL = "https://travelbuddy.homilabs.org/privacy.html"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +42,7 @@ fun SettingsScreen(activity: MainActivity, me: UserProfile) {
     val ctx = LocalContext.current
     var bio by remember { mutableStateOf(activity.prefs.biometricEnabled) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     Scaffold(contentWindowInsets = WindowInsets(0), topBar = { TopAppBar(title = { Text("Settings") }) }) { pad ->
         ScreenColumn(Modifier.padding(pad)) {
@@ -100,8 +101,13 @@ fun SettingsScreen(activity: MainActivity, me: UserProfile) {
             Text("TravelBuddy ${BuildConfig.VERSION_NAME} · free volunteer carpool, no payments.", style = MaterialTheme.typography.bodySmall)
 
             OutlinedButton(onClick = { confirmLogout = true }, modifier = Modifier.fillMaxWidth()) { Text("Log out") }
+            TextButton(
+                onClick = { confirmDelete = true },
+                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) { Text("Delete my account") }
         }
     }
+    if (confirmDelete) DeleteAccountDialog(onDismiss = { confirmDelete = false })
     if (confirmLogout) ConfirmDialog(
         "Log out?", "You'll need your email and password to log in again.", "Log out",
         onConfirm = {

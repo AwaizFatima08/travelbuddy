@@ -234,7 +234,7 @@ fun RideScreen(rideId: String, me: UserProfile, onBack: () -> Unit) {
                             },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                         ) { Text("Cancel request") }
-                        if (!ride.hasDriver) onBackAfterDeleteHint()
+                        if (!ride.hasDriver) DeleteHint()
                     }
 
                     isPassenger -> {
@@ -262,7 +262,7 @@ fun RideScreen(rideId: String, me: UserProfile, onBack: () -> Unit) {
 }
 
 @Composable
-private fun onBackAfterDeleteHint() {
+private fun DeleteHint() {
     Text("An unanswered request is deleted when you cancel it.", style = MaterialTheme.typography.bodySmall)
 }
 

@@ -57,6 +57,7 @@ import com.homilabs.travelbuddy.data.RegisterForm
 import com.homilabs.travelbuddy.data.Repo
 import com.homilabs.travelbuddy.model.UserProfile
 import com.homilabs.travelbuddy.ui.Centered
+import com.homilabs.travelbuddy.ui.DeleteAccountDialog
 import com.homilabs.travelbuddy.ui.ErrorNote
 import com.homilabs.travelbuddy.ui.LabeledValue
 import com.homilabs.travelbuddy.ui.toast
@@ -346,7 +347,15 @@ fun PendingScreen(profile: UserProfile) {
             }
         }
         OutlinedButton(onClick = { Repo.logout() }) { Text("Log out") }
+        DeleteAccountLink()
     }
+}
+
+@Composable
+private fun DeleteAccountLink() {
+    var show by remember { mutableStateOf(false) }
+    TextButton(onClick = { show = true }) { Text("Delete my account", color = MaterialTheme.colorScheme.error) }
+    if (show) DeleteAccountDialog(onDismiss = { show = false })
 }
 
 @Composable
@@ -365,6 +374,7 @@ fun BlockedScreen(profile: UserProfile) {
         )
         Spacer(Modifier.height(16.dp))
         OutlinedButton(onClick = { Repo.logout() }) { Text("Log out") }
+        DeleteAccountLink()
     }
 }
 

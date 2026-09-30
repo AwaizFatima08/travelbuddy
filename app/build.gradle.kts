@@ -52,6 +52,14 @@ android {
             )
             if (storePass != null) signingConfig = signingConfigs.getByName("upload")
         }
+        // Same R8-shrunk code as release, but signed with the debug key and pointed at the
+        // local emulator — for testing the shrunk app end-to-end. Never uploaded.
+        create("qa") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("boolean", "USE_EMULATOR", "true")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {

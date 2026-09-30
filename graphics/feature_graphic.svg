@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E5C3C"/><stop offset="1" stop-color="#1A8A5B"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="500" fill="url(#g)"/>
+  <!-- road -->
+  <path d="M0,420 C260,380 520,470 1024,400 L1024,500 L0,500 Z" fill="#0B4A31" opacity="0.8"/>
+  <path d="M0,452 C260,412 520,502 1024,432" stroke="#F2A516" stroke-width="5" stroke-dasharray="34 26" fill="none"/>
+  <!-- car badge -->
+  <circle cx="835" cy="215" r="165" fill="#FFFFFF" opacity="0.10"/>
+  <g transform="translate(666,46) scale(3.13)">
+    <circle cx="54" cy="54" r="46" fill="#12704A"/>
+    <path fill="#FFFFFF" d="M38,50 L42.2,37.4 Q43.2,34.5 46.3,34.5 L61.7,34.5 Q64.8,34.5 65.8,37.4 L70,50 Z"/>
+<path fill="#12704A" d="M41.6,48.5 L44.8,39.6 Q45.3,38 47,38 L61,38 Q62.7,38 63.2,39.6 L66.4,48.5 Z"/>
+<circle fill="#FFFFFF" cx="47.3" cy="44.2" r="2"/><circle fill="#FFFFFF" cx="52" cy="44.2" r="2"/>
+<circle fill="#FFFFFF" cx="56.7" cy="44.2" r="2"/><circle fill="#FFFFFF" cx="61.4" cy="44.2" r="2"/>
+<path fill="#FFFFFF" d="M31.5,50 L76.5,50 Q80,50 80,53.5 L80,67 Q80,70 77,70 L31,70 Q28,70 28,67 L28,53.5 Q28,50 31.5,50 Z"/>
+<circle fill="#F2A516" cx="36" cy="58" r="3.6"/><circle fill="#F2A516" cx="72" cy="58" r="3.6"/>
+<path fill="#12704A" d="M45,59 L63,59 Q64.5,59 64.5,60.5 L64.5,63.5 Q64.5,65 63,65 L45,65 Q43.5,65 43.5,63.5 L43.5,60.5 Q43.5,59 45,59 Z"/>
+<path fill="#FFFFFF" d="M31,70 L40,70 L40,75 Q40,77.5 37.5,77.5 L33.5,77.5 Q31,77.5 31,75 Z"/>
+<path fill="#FFFFFF" d="M68,70 L77,70 L77,75 Q77,77.5 74.5,77.5 L70.5,77.5 Q68,77.5 68,75 Z"/>
+  </g>
+  <text x="64" y="190" font-family="DejaVu Sans, Roboto, sans-serif" font-size="78" font-weight="700" fill="#FFFFFF">TravelBuddy</text>
+  <text x="68" y="250" font-family="DejaVu Sans, Roboto, sans-serif" font-size="34" fill="#DDF5E8">Township ⇄ Plant carpool</text>
+  <text x="68" y="296" font-family="DejaVu Sans, Roboto, sans-serif" font-size="30" fill="#F2C35A">Free · Volunteer · FFL community</text>
+</svg>

@@ -1,0 +1,32 @@
+# Build output
+.gradle/
+build/
+app/build/
+.kotlin/
+*.apk
+*.aab
+*.idsig
+
+# Local machine / IDE
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+
+# SECRETS — never commit
+google-services.json
+*.jks
+*.keystore
+keystore.properties
+.env
+
+# Old AI Studio reference build (binaries + old key notes)
+Old AI Studio project/
+
+# Firebase / node
+firestore-tests/node_modules/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TravelBuddy Privacy Policy</title>
+<style>
+  :root { --fg:#1b1f1c; --bg:#f7fbf7; --accent:#12704a; --muted:#4e5a52; }
+  @media (prefers-color-scheme: dark) { :root { --fg:#e3ebe5; --bg:#101512; --accent:#6fd6a3; --muted:#a9b8ae; } }
+  body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--fg); background: var(--bg);
+         max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { color: var(--accent); margin-bottom: 0; }
+  h2 { margin-top: 2em; font-size: 1.2em; }
+  .muted { color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border-bottom: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); text-align: left; padding: 8px 6px; vertical-align: top; }
+</style>
+</head>
+<body>
+<h1>TravelBuddy — Privacy Policy</h1>
+<p class="muted">Effective 30 September 2026 · App: TravelBuddy (com.homilabs.travelbuddy) · Publisher: HomiLabs</p>
+
+<p>TravelBuddy is a free, volunteer carpool app that helps members of the FFL (Fatima Fertilizer) community share rides
+between the Township and the Plant site. There are no payments, no ads and no tracking for marketing.
+This page explains what the app collects, why, and who can see it.</p>
+
+<h2>What we collect</h2>
+<table>
+<tr><th>Data</th><th>Why</th><th>Who can see it</th></tr>
+<tr><td>Name, email, phone number, employee ID, department, township location (house/block)</td>
+    <td>Create your account, let the admin recognise and approve you, and let members arrange rides and call each other.</td>
+    <td>You and the app admins. Your name and phone number are also shown to approved members on rides you post or join.</td></tr>
+<tr><td>Rides you post or join (date, slot, direction, pickup stop, seats, notes)</td>
+    <td>Run the ride board and your ride history.</td>
+    <td>Approved members.</td></tr>
+<tr><td>Precise location of the <b>driver</b>, only while a ride is started</td>
+    <td>Show the ride's passengers how far away the driver is and alert them when the driver is about 2 minutes away.</td>
+    <td>Only that ride's driver and confirmed passengers. Sharing stops when the ride is completed or cancelled, or automatically after 45 minutes, with a visible notification the whole time.</td></tr>
+<tr><td>Your approximate location, on your phone only</td>
+    <td>Sort pickup stops nearest-first. Admins may also capture a stop's map point with their GPS.</td>
+    <td>Not uploaded (except a stop's point saved by an admin).</td></tr>
+<tr><td>Admin actions (approve / block / unblock, reason, time)</td>
+    <td>Keep an audit trail of account decisions.</td>
+    <td>Admins, and you (on your own account).</td></tr>
+</table>
+<p>TravelBuddy does <b>not</b> use background location, does not read your contacts, and does not store your password
+(sign-in is handled by Google Firebase Authentication). Fingerprint/face unlock happens entirely on your phone; no
+biometric data ever leaves it.</p>
+
+<h2>Where data is stored</h2>
+<p>Data is stored in Google Firebase (Cloud Firestore and Firebase Authentication), in the asia-south1 (Mumbai) region,
+and is encrypted in transit (HTTPS/TLS). Google processes this data on our behalf under the
+<a href="https://firebase.google.com/terms/data-processing-terms">Firebase data processing terms</a>.</p>
+
+<h2>How long we keep it</h2>
+<ul>
+  <li>Rides and ride history are deleted automatically 30 days after the ride date.</li>
+  <li>The driver's live location is deleted when the ride ends (and in any case within 24 hours).</li>
+  <li>Your account details are kept while you are a member. Ask the admin to delete your account at any time and it
+      will be removed, together with your sign-in, within 30 days.</li>
+</ul>
+
+<h2>Sharing</h2>
+<p>We do not sell or share your data with anyone outside the app, and we do not use it for advertising.
+Data is only visible to other approved TravelBuddy members as described above.</p>
+
+<h2>Your choices</h2>
+<ul>
+  <li>You can refuse the location permission; the app still works, but stops won't be sorted by distance and drivers
+      can't share live location.</li>
+  <li>You can turn notifications off in your phone settings.</li>
+  <li>To correct or delete your data, contact the admin (below).</li>
+</ul>
+
+<h2>Children</h2>
+<p>TravelBuddy is for adult employees and community members only (18+).</p>
+
+<h2>Contact</h2>
+<p>HomiLabs — TravelBuddy admin: <a href="mailto:CONTACT_EMAIL">CONTACT_EMAIL</a></p>
+
+<p class="muted">We will update this page if the app changes how it uses data; the effective date above will change too.</p>
+</body>
+</html>

@@ -32,3 +32,14 @@ ui-debug.log
 .firebase/
 graphics/play/*.mp4
 travelbuddy-website.zip
+
+# Flutter client (v2): generated Firebase config and build output
+client/lib/firebase_options.dart
+client/android/app/google-services.json
+client/android/key.properties
+client/build/
+client/.dart_tool/
+legacy/v1-android/app/build/
+legacy/v1-android/.gradle/
+legacy/v1-android/local.properties
+firestore-debug.log

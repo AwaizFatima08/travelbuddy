@@ -1,41 +1,35 @@
-// Security-rules tests for TravelBuddy. Run with:
-//   firebase emulators:exec --only firestore "npm --prefix firestore-tests test"
+// Security-rules tests for TravelBuddy v2 (firestore.rules). Run with scripts/test-rules.sh
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
+import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import {
-  initializeTestEnvironment, assertSucceeds, assertFails,
-} from '@firebase/rules-unit-testing';
-import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs,
-  deleteField, Timestamp, serverTimestamp,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs, Timestamp, serverTimestamp,
 } from 'firebase/firestore';
 
 let env;
-const deleteAt = Timestamp.fromDate(new Date(Date.now() + 30 * 864e5));
+const ts = (minsFromNow) => Timestamp.fromMillis(Date.now() + minsFromNow * 60000);
 
 const user = (uid, status = 'ACTIVE', role = 'USER') => ({
-  name: uid.toUpperCase(), email: `${uid}@x.com`, phone: '03001234567', employeeId: 'E1',
-  department: 'Ops', townshipLocation: 'Block A', accountStatus: status, role,
+  name: uid.toUpperCase(), email: `${uid}@x.com`, phone: '03001234567', employeeId: `E-${uid}`,
+  department: 'Ops', townshipLocation: 'Block A', hasCar: true, siteId: 'ffl', accountStatus: status, role,
 });
 
-const offer = (driver = 'dan', extra = {}) => ({
-  type: 'OFFER', driverId: driver, driverName: 'Dan', driverPhone: '0300',
-  posterId: driver, posterName: 'Dan', posterPhone: '0300',
-  date: '2026-10-01', slot: 'MORNING', direction: 'TO_PLANT', departTime: '07:20',
-  stopId: 's1', stopName: 'Gate 1', note: '', totalSeats: 3, status: 'OPEN',
-  requests: {}, participantIds: [driver], startedAt: null, completedAt: null, deleteAt, ...extra,
+const post = (uid, kind = 'OFFER', extra = {}) => ({
+  siteId: 'ffl', kind, userId: uid, userName: uid, userPhone: '0300', windowId: 'morning', date: '2026-10-16',
+  departAt: ts(60), fromPlaceId: 'e_type_end', toPlaceId: 'ccr_parking', seats: kind === 'OFFER' ? 3 : 1,
+  seatsLeft: kind === 'OFFER' ? 3 : 1, status: 'OPEN', autoAccept: true, note: '', createdAt: serverTimestamp(),
+  deleteAt: ts(60 * 24 * 30), ...extra,
 });
 
-const request = (poster = 'pam', extra = {}) => ({
-  ...offer(poster, extra), type: 'REQUEST', driverId: '', driverName: '', driverPhone: '',
-  posterName: 'Pam', totalSeats: 1, ...extra,
+const ride = (extra = {}) => ({
+  siteId: 'ffl', driverId: 'dan', driverName: 'DAN', driverPhone: '0300', offerPostId: 'o1', windowId: 'morning',
+  date: '2026-10-16', departAt: ts(60), fromPlaceId: 'e_type_end', toPlaceId: 'ccr_parking', status: 'LOCKED',
+  passengers: { pam: { name: 'PAM', phone: '0300', pickupPlaceId: 'e_type_end', postId: 'r1', pickedUp: false } },
+  participantIds: ['dan', 'pam'], reminded: false, hasOpenDispute: false, deleteAt: ts(60 * 24 * 30), ...extra,
 });
 
 const db = (uid) => (uid ? env.authenticatedContext(uid) : env.unauthenticatedContext()).firestore();
-
-async function seed(fn) {
-  await env.withSecurityRulesDisabled(async (ctx) => fn(ctx.firestore()));
-}
+const seed = (fn) => env.withSecurityRulesDisabled(async (ctx) => fn(ctx.firestore()));
 
 before(async () => {
   env = await initializeTestEnvironment({
@@ -54,207 +48,146 @@ beforeEach(async () => {
     await setDoc(doc(f, 'users/eve'), user('eve'));
     await setDoc(doc(f, 'users/newbie'), user('newbie', 'PENDING'));
     await setDoc(doc(f, 'users/bad'), user('bad', 'BLOCKED'));
-    await setDoc(doc(f, 'settings/stops'), { stops: [] });
-    await setDoc(doc(f, 'rides/o1'), offer());
-    await setDoc(doc(f, 'rides/r1'), request());
+    await setDoc(doc(f, 'sites/ffl'), { name: 'FFL', places: [], windows: [] });
+    await setDoc(doc(f, 'posts/o1'), post('dan', 'OFFER'));
+    await setDoc(doc(f, 'posts/r1'), post('pam', 'REQUEST'));
+    await setDoc(doc(f, 'rides/x1'), ride());
+    await setDoc(doc(f, 'points/p1'), { uid: 'pam', siteId: 'ffl', delta: 1, reason: 'RIDE_LOCKED', at: Timestamp.now() });
+    await setDoc(doc(f, 'monthly/ffl_2026-10'), { users: {}, totals: {} });
+    await setDoc(doc(f, 'notifications/pam/items/n1'), { title: 'Hi', body: 'x', read: false, at: Timestamp.now() });
   });
 });
 
 // ------------------------------------------------------------------ users
-
-test('register: own PENDING/USER doc allowed', async () => {
+test('register: own PENDING/USER profile allowed; nothing else at create', async () => {
   const { accountStatus, role, ...rest } = user('fresh');
-  await assertSucceeds(setDoc(doc(db('fresh'), 'users/fresh'), { ...rest, accountStatus: 'PENDING', role: 'USER' }));
-});
-test('register: cannot self-approve, self-admin, add audit, or create for someone else', async () => {
-  await assertFails(setDoc(doc(db('fresh'), 'users/fresh'), user('fresh', 'ACTIVE')));
-  await assertFails(setDoc(doc(db('fresh'), 'users/fresh'), user('fresh', 'PENDING', 'ADMIN')));
-  await assertFails(setDoc(doc(db('fresh'), 'users/fresh'), { ...user('fresh', 'PENDING'), audit: [] }));
-  await assertFails(setDoc(doc(db('fresh'), 'users/other'), user('other', 'PENDING')));
+  await assertSucceeds(setDoc(doc(db('fresh'), 'users/fresh'), { ...rest, accountStatus: 'PENDING', role: 'USER', createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(db('fresh2'), 'users/fresh2'), user('fresh2', 'ACTIVE')));
+  await assertFails(setDoc(doc(db('fresh3'), 'users/fresh3'), user('fresh3', 'PENDING', 'ADMIN')));
+  await assertFails(setDoc(doc(db('fresh4'), 'users/fresh4'), { ...user('fresh4', 'PENDING'), points: 500 }));
+  await assertFails(setDoc(doc(db('fresh5'), 'users/other'), user('other', 'PENDING')));
   await assertFails(setDoc(doc(db(null), 'users/x'), user('x', 'PENDING')));
 });
-test('users: self can edit profile fields but not status/role/audit', async () => {
-  await assertSucceeds(updateDoc(doc(db('newbie'), 'users/newbie'), { phone: '03111111111' }));
+test('users: self edits only profile fields; never status/role/points/noShows', async () => {
+  await assertSucceeds(updateDoc(doc(db('pam'), 'users/pam'), { phone: '0311', hasCar: false, lastRole: 'passenger', fcmTokens: { tok: serverTimestamp() } }));
   await assertFails(updateDoc(doc(db('newbie'), 'users/newbie'), { accountStatus: 'ACTIVE' }));
   await assertFails(updateDoc(doc(db('dan'), 'users/dan'), { role: 'ADMIN' }));
-  await assertFails(updateDoc(doc(db('dan'), 'users/dan'), { audit: [] }));
-  await assertFails(updateDoc(doc(db('dan'), 'users/dan'), { lastAdminActionAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(db('dan'), 'users/dan'), { points: 999 }));
+  await assertFails(updateDoc(doc(db('dan'), 'users/dan'), { noShows: 0 }));
   await assertFails(updateDoc(doc(db('dan'), 'users/dan'), { email: 'new@x.com' }));
+  await assertFails(updateDoc(doc(db('dan'), 'users/dan'), { siteId: 'other' }));
 });
-test('users: read own doc only; admin reads all; nobody else lists users', async () => {
+test('users: read own; admin reads all and lists pending; others cannot', async () => {
   await assertSucceeds(getDoc(doc(db('newbie'), 'users/newbie')));
   await assertFails(getDoc(doc(db('dan'), 'users/pam')));
   await assertSucceeds(getDoc(doc(db('admin'), 'users/pam')));
   await assertSucceeds(getDocs(query(collection(db('admin'), 'users'), where('accountStatus', '==', 'PENDING'))));
   await assertFails(getDocs(query(collection(db('dan'), 'users'), where('accountStatus', '==', 'PENDING'))));
 });
-test('admin: approve / block with audit allowed; cannot change role; cannot self-edit status', async () => {
+test('admin: approve/block with audit; cannot change role, points, or own status', async () => {
   const a = db('admin');
-  await assertSucceeds(updateDoc(doc(a, 'users/newbie'), {
-    accountStatus: 'ACTIVE', audit: [{ action: 'APPROVED', by: 'admin', byName: 'A', at: Timestamp.now(), reason: '' }],
-    lastAdminActionAt: serverTimestamp(),
-  }));
+  await assertSucceeds(updateDoc(doc(a, 'users/newbie'), { accountStatus: 'ACTIVE', audit: [{ action: 'APPROVED', by: 'admin', byName: 'A', at: Timestamp.now(), reason: '' }], lastAdminActionAt: serverTimestamp() }));
   await assertSucceeds(updateDoc(doc(a, 'users/dan'), { accountStatus: 'BLOCKED' }));
   await assertFails(updateDoc(doc(a, 'users/pam'), { role: 'ADMIN' }));
+  await assertFails(updateDoc(doc(a, 'users/pam'), { points: 100 }));
   await assertFails(updateDoc(doc(a, 'users/admin'), { accountStatus: 'BLOCKED' }));
   await assertFails(updateDoc(doc(a, 'users/pam'), { accountStatus: 'SUPER' }));
 });
-test('users: only the owner can delete their own doc (account deletion)', async () => {
+test('users: only the owner deletes their doc (account deletion)', async () => {
   await assertFails(deleteDoc(doc(db('admin'), 'users/pam')));
   await assertFails(deleteDoc(doc(db('dan'), 'users/pam')));
-  await assertFails(deleteDoc(doc(db(null), 'users/pam')));
   await assertSucceeds(deleteDoc(doc(db('pam'), 'users/pam')));
-  await assertSucceeds(deleteDoc(doc(db('bad'), 'users/bad')));   // blocked users can still leave
 });
 
-// ------------------------------------------------------------------ settings
-
-test('settings: active members read, only admin writes; pending/blocked cannot read', async () => {
-  await assertSucceeds(getDoc(doc(db('dan'), 'settings/stops')));
-  await assertFails(getDoc(doc(db('newbie'), 'settings/stops')));
-  await assertFails(getDoc(doc(db('bad'), 'settings/stops')));
-  await assertFails(setDoc(doc(db('dan'), 'settings/stops'), { stops: [] }));
-  await assertSucceeds(setDoc(doc(db('admin'), 'settings/stops'), { stops: [{ id: 'a', name: 'A', lat: 1, lng: 2, active: true, order: 0 }] }));
+// ------------------------------------------------------------------ sites
+test('sites: active members read; only admin writes; pending/blocked cannot read', async () => {
+  await assertSucceeds(getDoc(doc(db('dan'), 'sites/ffl')));
+  await assertFails(getDoc(doc(db('newbie'), 'sites/ffl')));
+  await assertFails(getDoc(doc(db('bad'), 'sites/ffl')));
+  await assertFails(setDoc(doc(db('dan'), 'sites/ffl'), { name: 'x' }));
+  await assertSucceeds(setDoc(doc(db('admin'), 'sites/ffl'), { name: 'FFL', places: [], windows: [] }));
 });
 
-// ------------------------------------------------------------------ rides: read / create
-
-test('rides: only ACTIVE members can read', async () => {
-  const board = (f) => getDocs(query(collection(f, 'rides'),
-    where('date', '==', '2026-10-01'), where('slot', '==', 'MORNING'),
-    where('direction', '==', 'TO_PLANT'), where('status', '==', 'OPEN')));
+// ------------------------------------------------------------------ posts
+test('posts: board read only by ACTIVE members', async () => {
+  const board = (f) => getDocs(query(collection(f, 'posts'), where('siteId', '==', 'ffl'), where('date', '==', '2026-10-16'), where('windowId', '==', 'morning'), where('status', '==', 'OPEN')));
   await assertSucceeds(board(db('pam')));
   await assertFails(board(db('newbie')));
   await assertFails(board(db('bad')));
   await assertFails(board(db(null)));
 });
-test('rides: valid OFFER and REQUEST can be posted', async () => {
-  await assertSucceeds(setDoc(doc(db('eve'), 'rides/n1'), offer('eve')));
-  await assertSucceeds(setDoc(doc(db('eve'), 'rides/n2'), request('eve')));
+test('posts: valid offer and request can be created', async () => {
+  await assertSucceeds(setDoc(doc(db('eve'), 'posts/n1'), post('eve', 'OFFER')));
+  await assertSucceeds(setDoc(doc(db('eve'), 'posts/n2'), post('eve', 'REQUEST')));
 });
-test('rides: invalid posts are rejected', async () => {
+test('posts: invalid creates are rejected', async () => {
   const e = db('eve');
-  await assertFails(setDoc(doc(e, 'rides/x1'), offer('dan')));                               // posting as someone else
-  await assertFails(setDoc(doc(e, 'rides/x2'), offer('eve', { status: 'FULL' })));
-  await assertFails(setDoc(doc(e, 'rides/x3'), offer('eve', { totalSeats: 12 })));
-  await assertFails(setDoc(doc(e, 'rides/x4'), offer('eve', { requests: { pam: { name: 'P', phone: '', stopId: '', status: 'ACCEPTED' } } })));
-  await assertFails(setDoc(doc(e, 'rides/x5'), offer('eve', { participantIds: ['eve', 'pam'] })));
-  await assertFails(setDoc(doc(e, 'rides/x6'), { ...request('eve'), driverId: 'dan' }));
-  await assertFails(setDoc(doc(e, 'rides/x7'), offer('eve', { deleteAt: '2026-11-01' })));
-  await assertFails(setDoc(doc(e, 'rides/x8'), offer('eve', { driverLoc: { lat: 1, lng: 1 } })));
-  await assertFails(setDoc(doc(db('newbie'), 'rides/x9'), offer('newbie')));
+  await assertFails(setDoc(doc(e, 'posts/x1'), post('dan')));                                   // as someone else
+  await assertFails(setDoc(doc(e, 'posts/x2'), post('eve', 'OFFER', { status: 'FULL' })));
+  await assertFails(setDoc(doc(e, 'posts/x3'), post('eve', 'OFFER', { seats: 9, seatsLeft: 9 })));
+  await assertFails(setDoc(doc(e, 'posts/x4'), post('eve', 'OFFER', { seats: 3, seatsLeft: 1 })));
+  await assertFails(setDoc(doc(e, 'posts/x5'), post('eve', 'REQUEST', { seats: 2, seatsLeft: 2 })));
+  await assertFails(setDoc(doc(e, 'posts/x6'), post('eve', 'OFFER', { rideId: 'x1' })));
+  await assertFails(setDoc(doc(e, 'posts/x7'), post('eve', 'OFFER', { siteId: 'other' })));
+  await assertFails(setDoc(doc(e, 'posts/x8'), post('eve', 'OFFER', { deleteAt: '2026-11-01' })));
+  await assertFails(setDoc(doc(db('newbie'), 'posts/x9'), post('newbie')));
+});
+test('posts: owner may only toggle autoAccept/note; status, seats, rideId are server-only', async () => {
+  await assertSucceeds(updateDoc(doc(db('dan'), 'posts/o1'), { autoAccept: false, note: 'AC car' }));
+  await assertFails(updateDoc(doc(db('dan'), 'posts/o1'), { status: 'CANCELLED' }));
+  await assertFails(updateDoc(doc(db('dan'), 'posts/o1'), { seatsLeft: 0 }));
+  await assertFails(updateDoc(doc(db('dan'), 'posts/o1'), { rideId: 'x1' }));
+  await assertFails(updateDoc(doc(db('dan'), 'posts/o1'), { departAt: ts(5) }));
+  await assertFails(updateDoc(doc(db('pam'), 'posts/o1'), { autoAccept: false }));          // not owner
+  await assertFails(deleteDoc(doc(db('dan'), 'posts/o1')));
+  await assertSucceeds(deleteDoc(doc(db('admin'), 'posts/o1')));
 });
 
-// ------------------------------------------------------------------ rides: seat requests
-
-const ask = (status = 'ASKED') => ({ 'requests.pam': { name: 'Pam', phone: '0300', stopId: 's1', status } });
-
-test('seat: passenger can ask and withdraw an ASKED request', async () => {
-  await assertSucceeds(updateDoc(doc(db('pam'), 'rides/o1'), ask()));
-  await assertSucceeds(updateDoc(doc(db('pam'), 'rides/o1'), { 'requests.pam': deleteField() }));
+// ------------------------------------------------------------------ rides
+test('rides: only participants (and admin) read; nobody writes from the client', async () => {
+  await assertSucceeds(getDoc(doc(db('dan'), 'rides/x1')));
+  await assertSucceeds(getDoc(doc(db('pam'), 'rides/x1')));
+  await assertSucceeds(getDoc(doc(db('admin'), 'rides/x1')));
+  await assertFails(getDoc(doc(db('eve'), 'rides/x1')));
+  await assertFails(updateDoc(doc(db('dan'), 'rides/x1'), { status: 'COMPLETED' }));
+  await assertFails(updateDoc(doc(db('pam'), 'rides/x1'), { 'passengers.pam.pickedUp': true }));
+  await assertFails(setDoc(doc(db('dan'), 'rides/new'), ride()));
+  await assertFails(deleteDoc(doc(db('admin'), 'rides/x1')));
+  await assertSucceeds(getDocs(query(collection(db('pam'), 'rides'), where('participantIds', 'array-contains', 'pam'), where('status', 'in', ['LOCKED', 'PICKED_UP']))));
 });
-test('seat: passenger can NOT accept their own request', async () => {
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), ask('ACCEPTED')));
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), ask()));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), { 'requests.pam.status': 'ACCEPTED' }));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), { participantIds: ['dan', 'pam'] }));
-});
-test('seat: passenger cannot touch other requests or other fields', async () => {
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), { 'requests.eve': { name: 'E', phone: '', stopId: 's1', status: 'ASKED' } }));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), { 'requests.eve': deleteField() }));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), { ...ask(), note: 'hi' }));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), { 'requests.pam': { name: 'P', phone: '', stopId: '', status: 'ASKED', extra: 1 } }));
-});
-test('seat: cannot re-ask after decline, withdraw after accept, or ask on a FULL ride', async () => {
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), ask('DECLINED')));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), ask()));
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), { ...ask('ACCEPTED'), participantIds: ['dan', 'pam'] }));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), { 'requests.pam': deleteField() }));
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), { status: 'FULL', 'requests.pam': deleteField() }));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/o1'), ask()));
-});
-test('seat: driver cannot ask a seat in own ride', async () => {
-  await assertFails(updateDoc(doc(db('dan'), 'rides/o1'), { 'requests.dan': { name: 'D', phone: '', stopId: '', status: 'ASKED' } }));
-});
-test('driver: can accept (requests + participantIds + status)', async () => {
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), ask()));
-  await assertSucceeds(updateDoc(doc(db('dan'), 'rides/o1'), {
-    'requests.pam.status': 'ACCEPTED', participantIds: ['dan', 'pam'], status: 'OPEN',
-  }));
-});
-test('driver: ride details are frozen after posting', async () => {
-  await assertFails(updateDoc(doc(db('dan'), 'rides/o1'), { date: '2026-10-02' }));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/o1'), { driverId: 'eve' }));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/o1'), { deleteAt: Timestamp.now() }));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/o1'), { status: 'BOGUS' }));
-});
-test('driver: start / complete; finished rides are locked', async () => {
-  await assertSucceeds(updateDoc(doc(db('dan'), 'rides/o1'), { status: 'STARTED', startedAt: serverTimestamp() }));
-  await assertSucceeds(updateDoc(doc(db('dan'), 'rides/o1'), { status: 'COMPLETED', completedAt: serverTimestamp() }));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/o1'), { status: 'OPEN' }));
-});
-test('non-participants cannot change a ride', async () => {
-  await assertFails(updateDoc(doc(db('eve'), 'rides/o1'), { status: 'CANCELLED' }));
-  await assertFails(updateDoc(doc(db('eve'), 'rides/r1'), { status: 'CANCELLED' }));
+test('live positions: each participant writes only their own; participants read; outsiders never', async () => {
+  const pos = { lat: 28.2, lng: 70.0, at: serverTimestamp(), deleteAt: ts(360) };
+  await assertSucceeds(setDoc(doc(db('dan'), 'rides/x1/live/dan'), pos));
+  await assertSucceeds(setDoc(doc(db('pam'), 'rides/x1/live/pam'), pos));
+  await assertFails(setDoc(doc(db('pam'), 'rides/x1/live/dan'), pos));                      // someone else's doc
+  await assertFails(setDoc(doc(db('eve'), 'rides/x1/live/eve'), pos));                      // not in ride
+  await assertFails(setDoc(doc(db('dan'), 'rides/x1/live/dan'), { ...pos, speed: 1 }));     // extra field
+  await assertSucceeds(getDoc(doc(db('pam'), 'rides/x1/live/dan')));
+  await assertFails(getDoc(doc(db('eve'), 'rides/x1/live/dan')));
+  await assertFails(getDoc(doc(db('admin'), 'rides/x1/live/dan')));                         // admin is not in the ride
+  await assertSucceeds(deleteDoc(doc(db('dan'), 'rides/x1/live/dan')));
+  await seed((f) => updateDoc(doc(f, 'rides/x1'), { status: 'COMPLETED' }));
+  await assertFails(setDoc(doc(db('pam'), 'rides/x1/live/pam'), pos));                      // ride over
 });
 
-// ------------------------------------------------------------------ rides: take this passenger
-
-const take = (uid = 'dan', extra = {}) => ({
-  driverId: uid, driverName: 'Dan', driverPhone: '0300', participantIds: ['pam', uid], status: 'FULL', ...extra,
+// ------------------------------------------------------------------ points, monthly, notifications
+test('points: own ledger readable, admin reads all, never writable', async () => {
+  await assertSucceeds(getDocs(query(collection(db('pam'), 'points'), where('uid', '==', 'pam'))));
+  await assertFails(getDocs(query(collection(db('dan'), 'points'), where('uid', '==', 'pam'))));
+  await assertSucceeds(getDoc(doc(db('admin'), 'points/p1')));
+  await assertFails(setDoc(doc(db('pam'), 'points/p2'), { uid: 'pam', delta: 100 }));
+  await assertFails(updateDoc(doc(db('pam'), 'points/p1'), { delta: 100 }));
 });
-
-test('take: a member can take an open REQUEST', async () => {
-  await assertSucceeds(updateDoc(doc(db('dan'), 'rides/r1'), take()));
+test('monthly: readable by members, never writable', async () => {
+  await assertSucceeds(getDoc(doc(db('pam'), 'monthly/ffl_2026-10')));
+  await assertFails(getDoc(doc(db('newbie'), 'monthly/ffl_2026-10')));
+  await assertFails(updateDoc(doc(db('admin'), 'monthly/ffl_2026-10'), { totals: { kgSaved: 9 } }));
 });
-test('take: cannot change ANY other field while taking', async () => {
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), take('dan', { note: 'changed' })));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), take('dan', { date: '2026-10-05' })));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), take('dan', { stopId: 's9' })));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), take('dan', { participantIds: ['pam', 'dan', 'eve'] })));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), take('dan', { status: 'OPEN' })));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), take('eve')));                 // naming someone else
-});
-test('take: cannot take own request or an already-taken one', async () => {
-  await assertFails(updateDoc(doc(db('pam'), 'rides/r1'), take('pam', { participantIds: ['pam', 'pam'] })));
-  await seed((f) => updateDoc(doc(f, 'rides/r1'), take('eve', { participantIds: ['pam', 'eve'] })));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), take()));
-});
-test('take: after taking, ride details stay frozen; only status progress allowed', async () => {
-  await seed((f) => updateDoc(doc(f, 'rides/r1'), take()));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), { note: 'x' }));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), { departTime: '09:00' }));
-  await assertFails(updateDoc(doc(db('dan'), 'rides/r1'), { participantIds: ['dan'] }));
-  await assertFails(updateDoc(doc(db('pam'), 'rides/r1'), { status: 'STARTED' }));       // passenger can't start
-  await assertSucceeds(updateDoc(doc(db('dan'), 'rides/r1'), { status: 'STARTED', startedAt: serverTimestamp() }));
-  await assertSucceeds(updateDoc(doc(db('pam'), 'rides/r1'), { status: 'CANCELLED' }));  // poster may cancel
-});
-
-// ------------------------------------------------------------------ live location
-
-test('live loc: driver writes only while STARTED; only participants read', async () => {
-  const loc = { lat: 31.5, lng: 74.3, at: serverTimestamp(), deleteAt };
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), { ...ask('ACCEPTED'), participantIds: ['dan', 'pam'] }));
-  await assertFails(setDoc(doc(db('dan'), 'rides/o1/live/loc'), loc));                  // not started yet
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), { status: 'STARTED' }));
-  await assertSucceeds(setDoc(doc(db('dan'), 'rides/o1/live/loc'), loc));
-  await assertFails(setDoc(doc(db('dan'), 'rides/o1/live/other'), loc));
-  await assertFails(setDoc(doc(db('dan'), 'rides/o1/live/loc'), { ...loc, extra: 1 }));
-  await assertFails(setDoc(doc(db('pam'), 'rides/o1/live/loc'), loc));                  // passenger can't write
-  await assertSucceeds(getDoc(doc(db('pam'), 'rides/o1/live/loc')));                    // accepted passenger reads
-  await assertSucceeds(getDoc(doc(db('dan'), 'rides/o1/live/loc')));
-  await assertFails(getDoc(doc(db('eve'), 'rides/o1/live/loc')));                       // other member can't
-  await assertFails(getDoc(doc(db('admin'), 'rides/o1/live/loc')));
-  await assertFails(deleteDoc(doc(db('pam'), 'rides/o1/live/loc')));
-  await assertSucceeds(deleteDoc(doc(db('dan'), 'rides/o1/live/loc')));
-});
-
-// ------------------------------------------------------------------ delete
-
-test('delete: poster deletes an untouched OPEN post; not once someone asked; others never', async () => {
-  await assertFails(deleteDoc(doc(db('eve'), 'rides/o1')));
-  await seed((f) => updateDoc(doc(f, 'rides/o1'), ask()));
-  await assertFails(deleteDoc(doc(db('dan'), 'rides/o1')));
-  await assertSucceeds(deleteDoc(doc(db('pam'), 'rides/r1')));
-  await assertSucceeds(deleteDoc(doc(db('admin'), 'rides/o1')));
+test('notifications: own list read/mark-read/delete; no creating; nobody else reads', async () => {
+  await assertSucceeds(getDoc(doc(db('pam'), 'notifications/pam/items/n1')));
+  await assertSucceeds(updateDoc(doc(db('pam'), 'notifications/pam/items/n1'), { read: true }));
+  await assertFails(updateDoc(doc(db('pam'), 'notifications/pam/items/n1'), { title: 'x' }));
+  await assertFails(setDoc(doc(db('pam'), 'notifications/pam/items/n2'), { title: 'x', body: 'y' }));
+  await assertFails(getDoc(doc(db('dan'), 'notifications/pam/items/n1')));
+  await assertSucceeds(deleteDoc(doc(db('pam'), 'notifications/pam/items/n1')));
 });

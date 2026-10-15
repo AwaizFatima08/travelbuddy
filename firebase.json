@@ -3,9 +3,18 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "*.log"]
+    }
+  ],
   "emulators": {
     "firestore": { "port": 8185, "websocketPort": 9250 },
     "auth": { "port": 9199 },
+    "functions": { "port": 5101 },
     "hub": { "port": 4410 },
     "logging": { "port": 4510 },
     "ui": { "enabled": false },

@@ -43,3 +43,7 @@ legacy/v1-android/app/build/
 legacy/v1-android/.gradle/
 legacy/v1-android/local.properties
 firestore-debug.log
+
+# Cloud Functions
+functions/node_modules/
+functions/*.log

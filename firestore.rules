@@ -1,13 +1,10 @@
 rules_version = '2';
 
-// TravelBuddy V1 security rules.
-// Based on the design doc (rev 2), tightened on 2026-09-30:
-//  - a passenger can only ASK / withdraw an ASKED request — never accept themselves
-//  - "take this passenger" may change ONLY the driver fields + status FULL
-//  - after a ride is taken/posted, owners may only change status/progress fields
-//  - the driver's live location lives in rides/{id}/live/loc and is readable only
-//    by the ride's participants (driver + confirmed passengers)
-//  - users cannot create themselves with extra fields; admins cannot change roles in-app
+// TravelBuddy v2 security rules (docs/DESIGN-v2.md §12).
+//  - only approved (ACTIVE) members read anything beyond their own profile
+//  - users write only their own profile fields, their own posts and their own live position
+//  - rides, points, monthly totals and no-show reports are written ONLY by Cloud Functions
+//  - live positions are readable only by the people in that ride
 service cloud.firestore {
   match /databases/{db}/documents {
     function signedIn() { return request.auth != null; }
@@ -21,113 +18,80 @@ service cloud.firestore {
 
       allow create: if signedIn() && request.auth.uid == uid
                     && request.resource.data.keys().hasOnly(
-                         ['name','email','phone','employeeId','department','townshipLocation','accountStatus','role'])
+                         ['name','email','phone','employeeId','department','townshipLocation',
+                          'hasCar','siteId','accountStatus','role','createdAt'])
                     && request.resource.data.accountStatus == 'PENDING'
                     && request.resource.data.role == 'USER';
 
-      // Admin: approve / block / unblock + audit. Never the role (set by hand in the console).
-      // Self: only own profile fields.
+      // Admin: approve / block / unblock + audit (never the role — set by hand in the console).
+      // Self: profile fields, car flag, last role, push tokens. Points/noShows are server-only.
       allow update: if (admin() && request.auth.uid != uid
-                        && !changed().hasAny(['role'])
+                        && changed().hasOnly(['accountStatus','audit','lastAdminActionAt'])
                         && request.resource.data.accountStatus in ['PENDING','ACTIVE','BLOCKED'])
                     || (signedIn() && request.auth.uid == uid
-                        && changed().hasOnly(['name','phone','department','townshipLocation']));
+                        && changed().hasOnly(['name','phone','department','townshipLocation','hasCar','lastRole','fcmTokens']));
 
-      // In-app "Delete my account" (Google Play requirement). Admins delete in the console.
       allow delete: if signedIn() && request.auth.uid == uid;
     }
 
-    match /settings/{doc} {
-      allow read:  if active();
+    match /sites/{siteId} {
+      allow read: if active();
       allow write: if admin();
     }
 
+    match /posts/{postId} {
+      function d() { return resource.data; }
+      function n() { return request.resource.data; }
+      allow read: if active();
+      allow create: if active()
+                    && n().userId == request.auth.uid
+                    && n().kind in ['OFFER','REQUEST']
+                    && n().status == 'OPEN'
+                    && n().seats is int && n().seats >= 1 && n().seats <= 4
+                    && n().seatsLeft == n().seats
+                    && (n().kind == 'OFFER' || n().seats == 1)
+                    && n().date is string && n().date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    && n().departAt is timestamp && n().deleteAt is timestamp
+                    && n().siteId == me().siteId
+                    && !('rideId' in n());
+      // Owner may only toggle auto-accept or change the note; everything else is server-side.
+      allow update: if active() && d().userId == request.auth.uid
+                    && changed().hasOnly(['autoAccept','note']);
+      allow delete: if admin();
+    }
+
     match /rides/{rideId} {
-      function uid()      { return request.auth.uid; }
-      function d()        { return resource.data; }
-      function n()        { return request.resource.data; }
-      function isDriver() { return d().driverId == uid(); }
-      function isPoster() { return d().posterId == uid(); }
-      function live()     { return d().status in ['OPEN','FULL','STARTED']; }
+      allow read: if active() && (request.auth.uid in resource.data.participantIds || admin());
+      allow write: if false;   // Cloud Functions only
 
-      function validCreate() {
-        return n().posterId == uid()
-          && n().type in ['OFFER','REQUEST']
-          && n().status == 'OPEN'
-          && n().requests == {}
-          && n().participantIds == [uid()]
-          && n().slot in ['MORNING','LUNCH_OUT','LUNCH_IN','EVENING']
-          && n().direction in ['TO_PLANT','TO_TOWNSHIP']
-          && n().totalSeats is int && n().totalSeats >= 1 && n().totalSeats <= 6
-          && n().date is string && n().date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-          && n().deleteAt is timestamp
-          && !('driverLoc' in n())
-          && (n().type == 'OFFER'
-                ? n().driverId == uid()
-                : (n().driverId == '' && n().totalSeats == 1));
-      }
-
-      // Driver / poster managing their own ride. Ride details are frozen after posting.
-      function ownerUpdate() {
-        return (isDriver() || isPoster())
-          && live()
-          && changed().hasOnly(d().type == 'OFFER'
-               ? ['status','startedAt','completedAt','requests','participantIds']
-               : ['status','startedAt','completedAt'])
-          && n().status in ['OPEN','FULL','STARTED','COMPLETED','CANCELLED']
-          && !(d().driverId in n().requests)          // the driver can't hold a seat in their own car
-          // only the driver may start / complete, or accept / decline passengers
-          && (isDriver() || (
-               (!changed().hasAny(['status']) || n().status == 'CANCELLED')
-               && !changed().hasAny(['requests','participantIds','startedAt','completedAt'])));
-      }
-
-      // A passenger may only ASK for a seat (new request) or withdraw a request that is still ASKED.
-      function ownSeat() {
-        let r0 = d().requests;
-        let r1 = n().requests;
-        return changed().hasOnly(['requests'])
-          && d().type == 'OFFER' && d().status == 'OPEN'
-          && !isDriver()
-          && r1.diff(r0).affectedKeys().hasOnly([uid()])
-          && (
-               (uid() in r1 && !(uid() in r0)
-                 && r1[uid()].keys().hasOnly(['name','phone','stopId','status'])
-                 && r1[uid()].status == 'ASKED')
-            || (!(uid() in r1) && uid() in r0 && r0[uid()].status == 'ASKED')
-          );
-      }
-
-      // "Take this passenger": only the driver fields, participantIds and status may change.
-      function takeRequest() {
-        return d().type == 'REQUEST' && d().driverId == '' && d().status == 'OPEN'
-          && !isPoster()
-          && changed().hasOnly(['driverId','driverName','driverPhone','participantIds','status'])
-          && n().driverId == uid()
-          && n().status == 'FULL'
-          && n().participantIds == [d().posterId, uid()];
-      }
-
-      allow read:   if active();
-      allow create: if active() && validCreate();
-      allow update: if active() && (ownerUpdate() || ownSeat() || takeRequest());
-      allow delete: if admin()
-                    || (active() && isPoster() && d().status == 'OPEN' && d().requests.size() == 0
-                        && (d().type == 'OFFER' || d().driverId == ''));
-
-      // Driver's live location: only the ride's participants can read it,
-      // only the driver can write it, and only while the ride is STARTED.
-      match /live/{docId} {
+      // Live positions during a ride: participants read each other; each writes only their own.
+      match /live/{uid} {
         function ride() { return get(/databases/$(db)/documents/rides/$(rideId)).data; }
         allow read: if active() && request.auth.uid in ride().participantIds;
-        allow create, update: if active() && docId == 'loc'
-                    && ride().driverId == request.auth.uid
-                    && ride().status == 'STARTED'
+        allow create, update: if active() && request.auth.uid == uid
+                    && request.auth.uid in ride().participantIds
+                    && ride().status in ['LOCKED','PICKED_UP']
                     && request.resource.data.keys().hasOnly(['lat','lng','at','deleteAt'])
-                    && request.resource.data.lat is number
-                    && request.resource.data.lng is number;
-        allow delete: if active() && ride().driverId == request.auth.uid;
+                    && request.resource.data.lat is number && request.resource.data.lng is number;
+        allow delete: if active() && request.auth.uid == uid;
       }
+    }
+
+    match /points/{entryId} {
+      allow read: if active() && (resource.data.uid == request.auth.uid || admin());
+      allow write: if false;
+    }
+
+    match /monthly/{docId} {
+      allow read: if active();
+      allow write: if false;
+    }
+
+    match /notifications/{uid}/items/{itemId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && request.auth.uid == uid && changed().hasOnly(['read']);
+      allow delete: if signedIn() && request.auth.uid == uid;
+      allow create: if false;
     }
   }
 }

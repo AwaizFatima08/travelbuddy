@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 DEST=/mnt/storage/project_backups/travelbuddy_backup/$(date +%Y-%m-%d_%H%M)
 mkdir -p "$DEST"
-rsync -a --exclude build/ --exclude .gradle/ --exclude .kotlin/ --exclude node_modules/ \
+rsync -a --exclude build/ --exclude .gradle/ --exclude .kotlin/ --exclude node_modules/ --exclude .dart_tool/ --exclude firebase_options.dart \
       --exclude 'Old AI Studio project/' --exclude google-services.json --exclude '*.jks' \
       ./ "$DEST/"
 echo "Snapshot saved to $DEST ($(du -sh "$DEST" | cut -f1))"

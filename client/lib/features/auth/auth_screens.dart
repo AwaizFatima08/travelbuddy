@@ -73,6 +73,8 @@ class _Logo extends StatelessWidget {
         Text('TravelBuddy',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
         const Text('Township ⇄ Plant carpool for the FFL community', textAlign: TextAlign.center),
+        const SizedBox(height: 4),
+        Text('A HomiLabs app', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ]);
 }
 

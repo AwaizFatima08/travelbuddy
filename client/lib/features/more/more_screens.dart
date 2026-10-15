@@ -299,6 +299,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SectionTitle('About'),
           ListTile(leading: const Icon(Icons.privacy_tip), title: const Text('Privacy policy'), onTap: () => launchUrl(Uri.parse(privacyUrl), mode: LaunchMode.externalApplication)),
           const Text('TravelBuddy 2.0 · free volunteer carpool, no payments.', style: TextStyle(fontSize: 12)),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Image.asset('assets/images/logo.png', width: 36, height: 36),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('A HomiLabs app', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                ]),
+                const SizedBox(height: 8),
+                const Text('Designed and built by HomiLabs for the FFL community, to make car sharing between the Township and the Plant reliable and to cut the number of cars on the road.'),
+                const SizedBox(height: 8),
+                const Text('Acknowledgement', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text('With thanks to Awaiz Fatima for her contribution to TravelBuddy.'),
+                const SizedBox(height: 8),
+                const Text('© HomiLabs · homilabs.smc@gmail.com', style: TextStyle(fontSize: 12)),
+              ]),
+            ),
+          ),
           const SizedBox(height: 16),
           OutlinedButton(
             onPressed: () async {

@@ -63,7 +63,9 @@ class LiveShare {
     } catch (_) {}
 
     _ride = Repo.I.rideStream(ride.id).listen((r) {
-      if (r == null || !r.isActive || (r.passengers[myUid]?.pickedUp ?? false)) stop();
+      final isDriver = r?.driverId == myUid;
+      final allPickedUp = r != null && r.passengers.isNotEmpty && r.passengers.values.every((p) => p.pickedUp);
+      if (r == null || !r.isActive || (r.passengers[myUid]?.pickedUp ?? false) || (isDriver && allPickedUp)) stop();
     });
     _live = Repo.I.liveStream(ride.id).listen((list) => _checkApproach(ride, list));
     // Safety net: never share for more than 45 minutes.

@@ -386,6 +386,9 @@ exports.cancelRide = onCall(async (req) => {
       tx.update(db.doc(`posts/${ride.offerPostId}`), { status: "CANCELLED" });
     } else {
       const p = ride.passengers[uid];
+      // All transaction reads must happen before the first write.
+      const offerRef = db.doc(`posts/${ride.offerPostId}`);
+      const offer = (await tx.get(offerRef)).data();
       addPoints(tx, { uid, name: me.name, department: me.department, siteId: ride.siteId, delta: -POINTS.passengerLock,
         reason: "LEFT_RIDE", rideId, legs: { passengerLegs: -1, kgSaved: -kg } });
       if (late) addPoints(tx, { uid, name: me.name, department: me.department, siteId: ride.siteId, delta: POINTS.lateCancel, reason: "LATE_CANCEL", rideId });
@@ -398,8 +401,6 @@ exports.cancelRide = onCall(async (req) => {
         : { passengers, participantIds });
       if (p.postId) tx.update(db.doc(`posts/${p.postId}`), { status: "CANCELLED" });
       // Driver's seat comes back; if nobody is left the driver loses the +2 and the offer reopens.
-      const offerRef = db.doc(`posts/${ride.offerPostId}`);
-      const offer = (await tx.get(offerRef)).data();
       if (offer) tx.update(offerRef, { seatsLeft: (offer.seatsLeft || 0) + 1, status: "OPEN", ...(noneLeft ? { rideId: FieldValue.delete() } : {}) });
       if (noneLeft) addPoints(tx, { uid: ride.driverId, name: ride.driverName, siteId: ride.siteId, delta: -POINTS.driverLock, reason: "RIDE_EMPTIED", rideId, legs: { driverLegs: -1 } });
       notifyUids.push(ride.driverId);
@@ -613,6 +614,7 @@ exports.deleteMyAccount = onCall(async (req) => {
     else {
       const passengers = { ...r.passengers }; delete passengers[uid];
       await d.ref.update({ passengers, participantIds: r.participantIds.filter((x) => x !== uid) });
+      if (r.offerPostId) await db.doc(`posts/${r.offerPostId}`).update({ seatsLeft: FieldValue.increment(1), status: "OPEN" }).catch(() => {});
     }
   }
   const items = await db.collection(`notifications/${uid}/items`).get();

@@ -98,14 +98,22 @@ class Repo {
     return !doc.exists;
   }
 
+  /// True while a registration is writing its profile (the gate shows a spinner instead of the form).
+  final ValueNotifier<bool> registering = ValueNotifier(false);
+
   /// Email registration: creates the Auth user, then the PENDING profile.
   Future<void> registerEmail(RegisterForm f) async {
+    registering.value = true;
     try {
-      await _auth.createUserWithEmailAndPassword(email: f.email.trim(), password: f.password);
-    } on FirebaseAuthException catch (e) {
-      throw AppError(friendly(e));
+      try {
+        await _auth.createUserWithEmailAndPassword(email: f.email.trim(), password: f.password);
+      } on FirebaseAuthException catch (e) {
+        throw AppError(friendly(e));
+      }
+      await createProfile(f);
+    } finally {
+      registering.value = false;
     }
-    await createProfile(f);
   }
 
   /// Creates the PENDING profile for the signed-in Auth user (email or Google).
@@ -130,8 +138,11 @@ class Repo {
   Future<void> signOut() async {
     final u = _auth.currentUser;
     if (u != null) {
-      // Stop push to this device after logout.
-      await _users.doc(u.uid).update({'fcmTokens.${_lastToken ?? '-'}': FieldValue.delete()}).catchError((_) {});
+      // Stop push to this device after logout (FieldPath: tokens contain ':' which a dotted path can't hold).
+      final t = _lastToken;
+      if (t != null) {
+        await _users.doc(u.uid).update({FieldPath(['fcmTokens', t]): FieldValue.delete()}).catchError((_) {});
+      }
     }
     if (!kIsWeb) {
       try {
@@ -183,6 +194,9 @@ class Repo {
   Future<void> saveFcmToken(String token) async {
     final u = _auth.currentUser;
     if (u == null) return;
+    if (_lastToken != null && _lastToken != token) {
+      await _users.doc(u.uid).update({FieldPath(['fcmTokens', _lastToken!]): FieldValue.delete()}).catchError((_) {});
+    }
     _lastToken = token;
     await _users.doc(u.uid).set({
       'fcmTokens': {token: FieldValue.serverTimestamp()}

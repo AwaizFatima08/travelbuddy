@@ -24,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final clock = scope.clock;
     final slots = clock.upcoming(count: 4);
     role ??= me.hasCar ? (me.lastRole ?? 'driver') : 'passenger';
+    if (!me.hasCar) role = 'passenger';
     if (slot == null || !slots.contains(slot)) slot = slots.isEmpty ? null : slots.first;
 
     return Scaffold(
@@ -142,12 +143,17 @@ class _Board extends StatelessWidget {
     final scope = TbScope.of(context);
     final me = scope.me;
     return StreamBuilder<List<Post>>(
+      stream: Repo.I.myOpenPosts(me.uid),
+      builder: (context, mineSnap) => StreamBuilder<List<Post>>(
       stream: Repo.I.windowPosts(me.siteId, slot.date, slot.window.id),
       builder: (context, snap) {
         if (snap.hasError) return ErrorNote(Repo.friendly(snap.error!));
         if (!snap.hasData) return const Loading();
         final posts = snap.data!;
-        final mine = posts.where((p) => p.userId == me.uid).toList();
+        // My own posts come from a separate stream so a FULL offer still shows on Home.
+        final mine = (mineSnap.data ?? const <Post>[])
+            .where((p) => p.date == slot.date && p.windowId == slot.window.id)
+            .toList();
         final offers = posts.where((p) => p.isOffer && p.userId != me.uid).toList();
         final requests = posts.where((p) => !p.isOffer && p.userId != me.uid).toList();
         final myOffer = mine.where((p) => p.isOffer).firstOrNull;
@@ -164,6 +170,7 @@ class _Board extends StatelessWidget {
           ],
         ]);
       },
+      ),
     );
   }
 }
@@ -180,7 +187,9 @@ class _MyPostCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(p.isOffer ? '🚗 You are offering ${p.seatsLeft} of ${p.seats} seat(s)' : '🙋 You are waiting for a ride',
+          Text(p.isOffer
+              ? (p.seatsLeft > 0 ? '🚗 You are offering ${p.seatsLeft} of ${p.seats} seat(s)' : '🚗 Your car is full (${p.seats} seats)')
+              : '🙋 You are waiting for a ride',
               style: const TextStyle(fontWeight: FontWeight.bold)),
           Text('${scope.clock.hhmm(p.departAt)} · ${site.place(p.fromPlaceId)?.name ?? ''} → ${site.place(p.toPlaceId)?.name ?? ''}'),
           Row(children: [
@@ -245,7 +254,9 @@ class _RequestCard extends StatelessWidget {
             CallButton(r.userPhone),
           ]),
           if (myOffer == null)
-            const Padding(padding: EdgeInsets.only(top: 4), child: Text('Tap "Offer seats" first to accept passengers.', style: TextStyle(fontSize: 12))),
+            const Padding(padding: EdgeInsets.only(top: 4), child: Text('Tap "Offer seats" first to accept passengers.', style: TextStyle(fontSize: 12)))
+          else if (myOffer!.seatsLeft < 1)
+            const Padding(padding: EdgeInsets.only(top: 4), child: Text('Your car is full.', style: TextStyle(fontSize: 12))),
         ]),
       ),
     );

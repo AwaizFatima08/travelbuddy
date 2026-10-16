@@ -58,8 +58,13 @@ class AuthGate extends StatelessWidget {
               if (!ps.hasData && ps.connectionState == ConnectionState.waiting) return const Scaffold(body: Loading());
               final me = ps.data;
               if (me == null) {
-                // Signed in (Google or an interrupted registration) but no profile yet.
-                return AuthFlow(needsProfile: true, googleEmail: user.email, googleName: user.displayName);
+                return ValueListenableBuilder<bool>(
+                  valueListenable: Repo.I.registering,
+                  builder: (context, registering, _) => registering
+                      ? const Scaffold(body: Loading())
+                      // Signed in (Google or an interrupted registration) but no profile yet.
+                      : AuthFlow(needsProfile: true, googleEmail: user.email, googleName: user.displayName),
+                );
               }
               return switch (me.status) {
                 AccountStatus.pending => PendingScreen(me),

@@ -317,7 +317,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Text('Acknowledgement', style: TextStyle(fontWeight: FontWeight.w600)),
                 const Text('With thanks to Awaiz Fatima for her contribution to TravelBuddy.'),
                 const SizedBox(height: 8),
-                const Text('© HomiLabs · homilabs.smc@gmail.com', style: TextStyle(fontSize: 12)),
+                const Text('© HomiLabs · support@travelbuddy.homilabs.org', style: TextStyle(fontSize: 12)),
               ]),
             ),
           ),

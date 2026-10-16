@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Builds the static TravelBuddy website pages (run from this folder: python3 build.py)."""
-EMAIL = "homilabs.smc@gmail.com"
+EMAIL = "support@travelbuddy.homilabs.org"
 NAV = [("index.html", "Home"), ("privacy.html", "Privacy"), ("delete-account.html", "Delete account"), ("support.html", "Support")]
 CUR = ' aria-current="page"'
 

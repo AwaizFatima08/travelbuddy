@@ -26,6 +26,11 @@ Free, volunteer carpool app for the FFL community — Township ⇄ Plant. No pay
 `client/lib/firebase_options.dart`. The secrets live in `/mnt/storage/projects/travelbuddy-secrets/` (next to this
 folder). `scripts/gen-firebase-options.py` regenerates `firebase_options.dart` from them.
 
+## Contact / support
+
+- Public contact and Firebase support email: **support@travelbuddy.homilabs.org** (mailbox on the Hostinger domain).
+- Firebase public-facing name is set to **TravelBuddy** (Project settings → General), so reset emails say "TravelBuddy".
+
 ## Everyday commands
 
 ```bash

@@ -52,7 +52,7 @@ TravelBuddy is a private arrangement between colleagues. It does not handle paym
 | Feature graphic (1024×500) | `graphics/play/feature_graphic_1024x500.png` |
 | Phone screenshots (2–8) | `graphics/play/screenshot_1_board.png` … `screenshot_4_settings.png` |
 
-Category: **Maps & Navigation** (or Travel & Local) · Contact email: `homilabs.smc@gmail.com` ·
+Category: **Maps & Navigation** (or Travel & Local) · Contact email: `support@travelbuddy.homilabs.org` ·
 Website: `https://travelbuddy.homilabs.org`
 
 ## 4. App content (Policy → App content)

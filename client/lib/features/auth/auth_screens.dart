@@ -427,6 +427,19 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   final password = TextEditingController();
   bool busy = false;
   String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Re-enable "Delete forever" as soon as a password is typed.
+    password.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    password.dispose();
+    super.dispose();
+  }
   bool get isGoogle => Repo.I.currentUser?.providerData.any((p) => p.providerId == 'google.com') ?? false;
 
   @override

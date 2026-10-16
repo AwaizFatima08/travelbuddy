@@ -1,5 +1,9 @@
 # TravelBuddy — Play Console guide (internal testing → closed testing)
 
+> **v2 (Flutter) notes — 16 Oct 2026:** same package and upload key, so v2 uploads as an update (versionCode 2).
+> Location is now used by **both** drivers and passengers (only after a ride is locked, until pickup). Google sign-in added.
+> Build with `./scripts/build-release.sh`; the bundle is at `client/build/app/outputs/bundle/release/app-release.aab`.
+
 Everything you need to paste into Google Play Console, in order. Files are in `graphics/play/`.
 
 ## 1. Build the upload file
@@ -7,7 +11,7 @@ Everything you need to paste into Google Play Console, in order. Files are in `g
 ```bash
 ./scripts/build-release.sh
 ```
-It asks for the upload-key password and produces `app/build/outputs/bundle/release/app-release.aab`.
+It asks for the upload-key password and produces `client/build/app/outputs/bundle/release/app-release.aab`.
 
 ## 2. Create the app
 
@@ -32,7 +36,8 @@ TravelBuddy is a free, volunteer carpool app for the FFL (Fatima Fertilizer) com
 • Find a seat: ask a driver for a seat, or post a request that any driver can take.
 • Pickup stops: choose from the admin's list of stops, sorted nearest-first.
 • Tap to call: approved members can call each other to coordinate.
-• Know when to leave: once the driver starts the ride, confirmed passengers see how far away the driver is and get one alert when the driver is about 2 minutes away.
+• Know when to leave: once a ride is locked, driver and passenger see how far apart they are and get one alert when the car is close.
+• Green points: driver +2 and passenger +1 per shared ride, monthly leaderboard and kg CO₂ saved.
 • Private: every member is approved by the admin. The driver's location is shared only with that ride's confirmed passengers, only while the ride is in progress, with a visible notification.
 • Ride history for the last 30 days; older rides are deleted automatically.
 • Optional fingerprint/face unlock.
@@ -74,7 +79,7 @@ Website: `https://travelbuddy.homilabs.org`
 **Do you provide a way for users to request that their data is deleted?** Yes —
 in-app (Settings → Delete my account) and `https://travelbuddy.homilabs.org/delete-account.html`
 
-**Account creation:** "My app allows users to create an account" → username + password (email) →
+**Account creation:** "My app allows users to create an account" → username + password (email) and Google sign-in →
 Delete-account URL: `https://travelbuddy.homilabs.org/delete-account.html`
 
 | Data type | Collected | Shared* | Optional? | Purposes |
@@ -84,7 +89,7 @@ Delete-account URL: `https://travelbuddy.homilabs.org/delete-account.html`
 | Personal info → Phone number | Yes | No | Required | App functionality |
 | Personal info → Address (township house/block) | Yes | No | Required | App functionality, Account management |
 | Personal info → Other info (employee ID, department) | Yes | No | Required | Account management |
-| Location → Precise location | Yes | No | Optional (drivers who start a ride) | App functionality |
+| Location → Precise location | Yes | No | Optional (shared only after a ride is locked, until pickup — drivers and passengers) | App functionality |
 | App activity → Other user-generated content (ride posts, notes) | Yes | No | Required | App functionality |
 
 *"Shared" in Google's sense means sent to a third party. Showing data to other members inside the app after a
@@ -97,7 +102,7 @@ analytics or crash reporting — none of those SDKs are included.
 ### Location (foreground only — no background location)
 If asked "Why does your app need location?":
 ```
-Drivers share their live location with the confirmed passengers of their own ride, only between tapping "Start ride" and "Complete"/"Cancel" (auto-stops after 45 minutes), so passengers know when to walk to the pickup stop. Location is also used on the phone to sort pickup stops nearest-first. Location is never accessed in the background: sharing runs only inside a foreground service with a visible notification.
+After a ride is locked, the driver and the confirmed passenger(s) can share their live location with each other only, from the moment they tap "I'm on my way / waiting" until pickup (auto-stops after 45 minutes), so each side knows when the other is close. Location is never accessed in the background: sharing runs only inside a foreground service with a visible notification, and never without the user tapping to start it.
 ```
 Demo video: upload `graphics/play/location_demo_video.mp4` to YouTube as **Unlisted** and paste the link.
 (It shows the in-app explanation → Android permission prompt → Start ride → "Sharing your location" → Complete.)
@@ -105,13 +110,9 @@ Demo video: upload `graphics/play/location_demo_video.mp4` to YouTube as **Unlis
 ### Foreground service types (Policy → App content → Foreground service permissions)
 **FOREGROUND_SERVICE_LOCATION** (DriverLocationService)
 ```
-Task: Navigation / location sharing during a user-started carpool ride. The driver taps "Start ride"; the app shares the driver's location with that ride's confirmed passengers until the driver taps Complete or Cancel (max 45 minutes). The user can stop it from the notification. Impact if deferred or interrupted: passengers can't see how far the driver is and miss their pickup.
+Task: location sharing during a user-started carpool pickup. After a ride is locked, the user taps "I'm on my way / waiting"; the app shares their position with the other people in that one ride until pickup (max 45 minutes). The user can stop it from the app at any time. Impact if deferred or interrupted: the other side can't see how far away they are and the pickup is missed.
 ```
-**FOREGROUND_SERVICE_SPECIAL_USE** (PassengerWaitService) — subtype declared in the manifest
-```
-Carpool pickup alert. When a passenger taps "I'm waiting" (or opens the app within 10 minutes of their ride), the app keeps listening to that one confirmed ride so it can show the driver's distance and alert the passenger once when the driver is about 2 minutes away — including with the screen off. It ends when the passenger taps "Picked up", the ride ends, or after 90 minutes. No other foreground service type fits: it does not use the passenger's location, sync data, or play media.
-```
-Use the same demo video, or record a short second clip of "I'm waiting" → alert.
+(v2 uses only the `location` foreground service type — no special-use service.)
 
 ## 7. Reviewer access (App access)
 

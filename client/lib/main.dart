@@ -133,7 +133,14 @@ class _MainShellState extends State<MainShell> {
             ? ListTile(
                 leading: const Icon(Icons.admin_panel_settings),
                 title: const Text('Admin'),
-                trailing: const Icon(Icons.chevron_right),
+                subtitle: const Text('Approvals, places, windows, disputes, reports'),
+                trailing: StreamBuilder<List<UserProfile>>(
+                  stream: Repo.I.pendingUsers(),
+                  builder: (context, s) {
+                    final n = (s.data ?? const []).length;
+                    return Badge(isLabelVisible: n > 0, label: Text('$n'), child: const Icon(Icons.chevron_right));
+                  },
+                ),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TbScope(me: me, site: scope.site, child: const AdminHome()))),
               )
             : null,
@@ -158,7 +165,18 @@ class _MainShellState extends State<MainShell> {
             ),
             label: 'Alerts',
           ),
-          const NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
+          NavigationDestination(
+            icon: me.isAdmin
+                ? StreamBuilder<List<UserProfile>>(
+                    stream: Repo.I.pendingUsers(),
+                    builder: (context, s) {
+                      final n = (s.data ?? const []).length;
+                      return Badge(isLabelVisible: n > 0, label: Text('$n'), child: const Icon(Icons.settings));
+                    },
+                  )
+                : const Icon(Icons.settings),
+            label: 'Settings',
+          ),
         ],
       ),
     );

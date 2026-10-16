@@ -30,10 +30,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // TbScope is an inherited widget: it can only be read after the first frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     final me = TbScope.of(context).me;
     setState(() {
       data = null;

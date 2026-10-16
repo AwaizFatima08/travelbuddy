@@ -444,10 +444,11 @@ class _DisputesScreenState extends State<DisputesScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     try {
       final r = await Repo.I.ridesWithOpenDisputes(TbScope.of(context).me.siteId);
       setState(() => rides = r);

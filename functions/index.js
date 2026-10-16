@@ -60,22 +60,16 @@ function addPoints(tx, { uid, name, department, siteId, delta, reason, rideId, a
   });
   tx.set(db.doc(`users/${uid}`), { points: FieldValue.increment(delta) }, { merge: true });
   const { docId, ym } = monthKey(new Date(), siteId);
-  const upd = {
-    siteId, month: ym,
-    [`users.${uid}.name`]: name || "",
-    [`users.${uid}.department`]: department || "",
-    [`users.${uid}.points`]: FieldValue.increment(delta),
-  };
+  // Nested maps (not dotted keys): set(..., {merge:true}) merges deep and keeps FieldValue.increment.
+  const userUpd = { name: name || "", department: department || "", points: FieldValue.increment(delta) };
+  const totals = {};
   if (legs) {
-    for (const [k, v] of Object.entries(legs)) upd[`users.${uid}.${k}`] = FieldValue.increment(v);
-    if (legs.passengerLegs) upd["totals.passengerLegs"] = FieldValue.increment(legs.passengerLegs);
-    if (legs.driverLegs) upd["totals.driverLegs"] = FieldValue.increment(legs.driverLegs);
-    if (legs.kgSaved) {
-      upd[`users.${uid}.kgSaved`] = FieldValue.increment(legs.kgSaved);
-      upd["totals.kgSaved"] = FieldValue.increment(legs.kgSaved);
-    }
+    for (const [k, v] of Object.entries(legs)) userUpd[k] = FieldValue.increment(v);
+    if (legs.passengerLegs) totals.passengerLegs = FieldValue.increment(legs.passengerLegs);
+    if (legs.driverLegs) totals.driverLegs = FieldValue.increment(legs.driverLegs);
+    if (legs.kgSaved) totals.kgSaved = FieldValue.increment(legs.kgSaved);
   }
-  tx.set(db.doc(`monthly/${docId}`), upd, { merge: true });
+  tx.set(db.doc(`monthly/${docId}`), { siteId, month: ym, users: { [uid]: userUpd }, totals }, { merge: true });
 }
 
 /** In-app notification + push to all of a user's devices. Never throws. */
@@ -153,6 +147,7 @@ async function findMatches(site, post) {
 exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
   const post = { id: event.params.postId, ...event.data.data() };
   if (post.status !== "OPEN") return;
+  if (post.joinOf) return; // implicit request created by joinOffer — the driver is told by joinOffer itself
   const site = await getSite(post.siteId);
   const matches = await findMatches(site, post);
   const from = placeName(site, post.fromPlaceId);

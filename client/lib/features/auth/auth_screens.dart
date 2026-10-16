@@ -74,7 +74,7 @@ class _Logo extends StatelessWidget {
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
         const Text('Township ⇄ Plant carpool for the FFL community', textAlign: TextAlign.center),
         const SizedBox(height: 4),
-        Text('A HomiLabs app', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        Text('A HomiLabs app · for the FFL community only', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ]);
 }
 
@@ -187,7 +187,18 @@ class _RegisterState extends State<_Register> {
   @override
   Widget build(BuildContext context) => _Column(children: [
         Text('Register', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-        const Text('An admin will approve your account. Your phone number is visible to approved members so rides can be arranged.'),
+        Card(
+          color: Theme.of(context).colorScheme.tertiaryContainer,
+          child: const Padding(
+            padding: EdgeInsets.all(12),
+            child: Text(
+              'For the FFL community only. TravelBuddy is a private carpool for employees and residents of the '
+              'Fatima Fertilizer (FFL) Township and Plant. Every registration is checked and approved by the admin; '
+              'requests from outside the community are not approved.',
+            ),
+          ),
+        ),
+        const Text('Your phone number is visible to approved members so rides can be arranged.'),
         TextField(controller: name, decoration: const InputDecoration(labelText: 'Full name')),
         TextField(controller: email, enabled: !google, keyboardType: TextInputType.emailAddress, autocorrect: false,
             decoration: const InputDecoration(labelText: 'Email (personal or official)')),

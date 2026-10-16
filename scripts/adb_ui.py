@@ -80,6 +80,9 @@ elif c == "fillform":
         sh("shell", "input", "keyevent", "KEYCODE_MOVE_END"); sh("shell", "input", "keyevent", *(["67"] * 40))
         type_text(v); time.sleep(0.2); sh("shell", "input", "keyevent", "BACK"); time.sleep(0.5)
     print("filled", len(vals))
+elif c == "clickables":
+    for t, x, y, cl in nodes():
+        if cl == "true": print(f"{x:4},{y:4}  {t[:40]!r}")
 elif c == "texts":
     for t, x, y, cl in nodes():
         if t.strip(): print(f"{'*' if cl == 'true' else ' '} {x:4},{y:4}  {t[:90]!r}")

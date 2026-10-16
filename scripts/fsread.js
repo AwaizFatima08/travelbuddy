@@ -26,6 +26,10 @@ const fields = (d) => Object.fromEntries(Object.entries(d.fields || {}).map(([k,
     const r = await fs.getDocuments(P, [arg]);
     for (const d of r.documents) console.log(JSON.stringify(fields(d), null, 1));
     for (const m of r.missing) console.log("MISSING", m);
+  } else if (cmd === "group") {
+    // collection-group query, e.g. group items 50 → every notifications/*/items doc
+    const r = await fs.queryCollection(P, { from: [{ collectionId: arg, allDescendants: true }], limit: Number(lim || 50) });
+    for (const d of r.documents) console.log(d.name.split("/documents/")[1], JSON.stringify(fields(d)));
   } else if (cmd === "col") {
     const r = await fs.queryCollection(P, { from: [{ collectionId: arg }], limit: Number(lim || 20) });
     for (const d of r.documents) console.log(d.name.split("/").pop(), JSON.stringify(fields(d)));

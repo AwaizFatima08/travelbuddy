@@ -9,9 +9,10 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+
 admin.initializeApp();
-const db = admin.firestore();
-const { FieldValue, Timestamp } = admin.firestore;
+const db = getFirestore();
 
 setGlobalOptions({ region: "asia-south1", maxInstances: 10, memory: "256MiB" });
 

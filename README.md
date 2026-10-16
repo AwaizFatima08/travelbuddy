@@ -15,7 +15,7 @@ Free, volunteer carpool app for the FFL community — Township ⇄ Plant. No pay
 | `client/` | Flutter app (Android + web). `lib/core` models/repo/clock · `lib/features` screens · `lib/services` push + live location |
 | `functions/` | Cloud Functions: matching notifications, ride locking, points, no-shows, reminders, monthly totals, reports |
 | `firestore.rules`, `firestore.indexes.json` | Security rules, composite indexes, TTL (auto-delete) policies |
-| `firestore-tests/` | Rules tests (`rules.test.js`, 15 tests) + emulator helper |
+| `firestore-tests/` | Rules tests (`rules.test.js`, 15) · points-system tests (`points.test.mjs`, 12, runs the functions in the emulator) · `e2e.mjs` helper |
 | `scripts/` | `build-release.sh` (signed AAB) · `build-web.sh` (zip for the website) · `deploy-firestore.sh` · `test-rules.sh` · `backup.sh` · `gen-firebase-options.py` · `adb_ui.py` |
 | `graphics/` | Icon + feature-graphic sources; `graphics/play/` = Play Store assets |
 | `release/PLAY_CONSOLE_GUIDE.md` | Play Console steps, Data safety answers, declarations |
@@ -37,6 +37,7 @@ folder). `scripts/gen-firebase-options.py` regenerates `firebase_options.dart` f
 python3 scripts/gen-firebase-options.py     # once after cloning / when Firebase config changes
 cd client && flutter run                     # debug on the connected phone
 ./scripts/test-rules.sh                      # rules tests in the local emulator (Java 21 in ~/.local/jdk)
+./scripts/test-points.sh                     # points-system suite: runs the real Cloud Functions in the emulator (12 cases)
 ./scripts/deploy-firestore.sh                # rules + indexes + TTL to the real project
 firebase deploy --only functions             # server logic
 ./scripts/build-release.sh                   # signed Play bundle (asks for the upload-key password)

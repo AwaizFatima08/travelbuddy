@@ -49,7 +49,10 @@ class PushService {
     FirebaseMessaging.onMessageOpenedApp.listen((m) => _route(_payload(m.data)));
     final initial = await fm.getInitialMessage();
     if (initial != null) _route(_payload(initial.data));
-    fm.onRegistered.listen((t) => Repo.I.saveFcmToken(t));
+    // onRegistered gives the Firebase Installation ID; the server sends to FCM *tokens*,
+    // so keep using the token APIs (deprecated in name only — still the server-send path).
+    // ignore: deprecated_member_use
+    fm.onTokenRefresh.listen((t) => Repo.I.saveFcmToken(t));
   }
 
   /// Ask for permission and register this device for push. Safe to call repeatedly.
@@ -57,8 +60,12 @@ class PushService {
     final fm = FirebaseMessaging.instance;
     final s = await fm.requestPermission();
     if (s.authorizationStatus == AuthorizationStatus.denied) return;
-    // Android: register() → token arrives on onRegistered. Web push is wired in the web phase (needs a VAPID key).
-    if (!kIsWeb) await fm.register();
+    // Web push is wired in the web phase (needs a VAPID key); Android gets its FCM token here.
+    if (!kIsWeb) {
+      // ignore: deprecated_member_use
+      final t = await fm.getToken();
+      if (t != null) await Repo.I.saveFcmToken(t);
+    }
   }
 
   String _payload(Map<String, dynamic> data) => '${data['rideId'] ?? ''}|${data['postId'] ?? ''}';

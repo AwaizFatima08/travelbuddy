@@ -148,6 +148,11 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
   const post = { id: event.params.postId, ...event.data.data() };
   if (post.status !== "OPEN") return;
   if (post.joinOf) return; // implicit request created by joinOffer — the driver is told by joinOffer itself
+  // One role per window: a new OFFER closes the poster's own open REQUEST for that window, and vice versa.
+  const mine = await db.collection("posts").where("userId", "==", post.userId).where("date", "==", post.date)
+    .where("windowId", "==", post.windowId).where("status", "==", "OPEN")
+    .where("kind", "==", post.kind === "OFFER" ? "REQUEST" : "OFFER").get();
+  for (const d of mine.docs) if (!d.data().rideId) await d.ref.update({ status: "CANCELLED", replacedBy: post.id });
   const site = await getSite(post.siteId);
   const matches = await findMatches(site, post);
   const from = placeName(site, post.fromPlaceId);

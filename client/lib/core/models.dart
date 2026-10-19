@@ -12,15 +12,31 @@ enum RideStatus { locked, pickedUp, completed, cancelled, noShow }
 
 enum Side { township, plant }
 
+/// Which way a post or ride goes. Stored as TO_PLANT / TO_TOWNSHIP.
+enum Direction {
+  toPlant,
+  toTownship;
+
+  Side get from => this == Direction.toPlant ? Side.township : Side.plant;
+  Side get to => this == Direction.toPlant ? Side.plant : Side.township;
+  String get label => this == Direction.toPlant ? 'Township → Plant' : 'Plant → Township';
+  Direction get opposite => this == Direction.toPlant ? Direction.toTownship : Direction.toPlant;
+}
+
 T _enumOr<T extends Enum>(List<T> values, Object? raw, T fallback) {
   if (raw is! String) return fallback;
+  final want = raw.replaceAll('_', '').toUpperCase();
   for (final v in values) {
-    if (v.name == raw || v.name.toUpperCase() == raw.toUpperCase()) return v;
+    if (v.name == raw || v.name.toUpperCase() == want) return v;
   }
   return fallback;
 }
 
-String enumName(Enum e) => e.name.toUpperCase();
+String enumName(Enum e) => switch (e) {
+      Direction.toPlant => 'TO_PLANT',
+      Direction.toTownship => 'TO_TOWNSHIP',
+      _ => e.name.toUpperCase(),
+    };
 
 /// A pickup / drop landmark, e.g. "E-Type End" or "CCR Parking".
 class Place {
@@ -249,6 +265,10 @@ class UserProfile {
     this.lastRole,
     this.points = 0,
     this.noShows = 0,
+    this.reminders = const {},
+    this.driverRides = 0,
+    this.passengerRides = 0,
+    this.deviceCount = 0,
   });
 
   final String uid;
@@ -270,6 +290,16 @@ class UserProfile {
   /// Running totals written by the server (points ledger).
   final int points;
   final int noShows;
+
+  /// Per-slot commute reminders (windowId → on), Mon–Fri.
+  final Map<String, bool> reminders;
+
+  /// Completed-ride counters (server-written).
+  final int driverRides;
+  final int passengerRides;
+
+  /// Number of push-registered devices (fcmTokens map size).
+  final int deviceCount;
 
   bool get isAdmin => role == 'ADMIN' && status == AccountStatus.active;
 
@@ -293,6 +323,10 @@ class UserProfile {
       lastRole: m['lastRole'] as String?,
       points: (m['points'] as num?)?.toInt() ?? 0,
       noShows: (m['noShows'] as num?)?.toInt() ?? 0,
+      reminders: Map<String, bool>.from(((m['reminders'] as Map?) ?? const {}).map((k, v) => MapEntry(k as String, v == true))),
+      driverRides: (((m['stats'] as Map?) ?? const {})['driverRides'] as num?)?.toInt() ?? 0,
+      passengerRides: (((m['stats'] as Map?) ?? const {})['passengerRides'] as num?)?.toInt() ?? 0,
+      deviceCount: ((m['fcmTokens'] as Map?) ?? const {}).length,
     );
   }
 }
@@ -306,6 +340,7 @@ class Post {
     required this.userId,
     required this.userName,
     required this.userPhone,
+    required this.direction,
     required this.windowId,
     required this.date,
     required this.departAt,
@@ -318,6 +353,7 @@ class Post {
     this.note = '',
     this.rideId,
     this.createdAt,
+    this.cancelReason = '',
   });
 
   final String id;
@@ -326,6 +362,9 @@ class Post {
   final String userId;
   final String userName;
   final String userPhone;
+  final Direction direction;
+
+  /// Decided slot the leaving time falls in, or "other" (shift / off-slot ride). Set by the server.
   final String windowId;
 
   /// "YYYY-MM-DD" in site-local time.
@@ -344,6 +383,7 @@ class Post {
   /// For a REQUEST: the ride it was locked into, once matched.
   final String? rideId;
   final DateTime? createdAt;
+  final String cancelReason;
 
   bool get isOffer => kind == PostKind.offer;
   bool get isOpen => status == PostStatus.open;
@@ -357,7 +397,8 @@ class Post {
       userId: m['userId'] as String? ?? '',
       userName: m['userName'] as String? ?? '',
       userPhone: m['userPhone'] as String? ?? '',
-      windowId: m['windowId'] as String? ?? '',
+      direction: _enumOr(Direction.values, m['direction'], Direction.toPlant),
+      windowId: m['windowId'] as String? ?? 'other',
       date: m['date'] as String? ?? '',
       departAt: (m['departAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       fromPlaceId: m['fromPlaceId'] as String? ?? '',
@@ -369,6 +410,7 @@ class Post {
       note: m['note'] as String? ?? '',
       rideId: m['rideId'] as String?,
       createdAt: (m['createdAt'] as Timestamp?)?.toDate(),
+      cancelReason: m['cancelReason'] as String? ?? '',
     );
   }
 }
@@ -381,6 +423,7 @@ class RidePassenger {
     required this.pickupPlaceId,
     this.postId,
     this.pickedUp = false,
+    this.arrived = false,
   });
   final String uid;
   final String name;
@@ -388,6 +431,7 @@ class RidePassenger {
   final String pickupPlaceId;
   final String? postId;
   final bool pickedUp;
+  final bool arrived;
 
   factory RidePassenger.fromMap(String uid, Map<String, dynamic> m) => RidePassenger(
         uid: uid,
@@ -396,6 +440,7 @@ class RidePassenger {
         pickupPlaceId: m['pickupPlaceId'] as String? ?? '',
         postId: m['postId'] as String?,
         pickedUp: m['pickedUp'] as bool? ?? false,
+        arrived: m['arrived'] as bool? ?? false,
       );
 }
 
@@ -408,6 +453,7 @@ class Ride {
     required this.driverName,
     required this.driverPhone,
     required this.offerPostId,
+    required this.direction,
     required this.windowId,
     required this.date,
     required this.departAt,
@@ -419,6 +465,7 @@ class Ride {
     this.startedAt,
     this.completedAt,
     this.noShowReports = const {},
+    this.cancelReason = '',
   });
 
   final String id;
@@ -427,6 +474,7 @@ class Ride {
   final String driverName;
   final String driverPhone;
   final String offerPostId;
+  final Direction direction;
   final String windowId;
   final String date;
   final DateTime departAt;
@@ -440,6 +488,7 @@ class Ride {
 
   /// uid reported → {by, at, disputed, resolved}
   final Map<String, dynamic> noShowReports;
+  final String cancelReason;
 
   bool isDriver(String uid) => driverId == uid;
   bool isPassenger(String uid) => passengers.containsKey(uid);
@@ -457,7 +506,8 @@ class Ride {
       driverName: m['driverName'] as String? ?? '',
       driverPhone: m['driverPhone'] as String? ?? '',
       offerPostId: m['offerPostId'] as String? ?? '',
-      windowId: m['windowId'] as String? ?? '',
+      direction: _enumOr(Direction.values, m['direction'], Direction.toPlant),
+      windowId: m['windowId'] as String? ?? 'other',
       date: m['date'] as String? ?? '',
       departAt: (m['departAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       fromPlaceId: m['fromPlaceId'] as String? ?? '',
@@ -469,6 +519,7 @@ class Ride {
       startedAt: (m['startedAt'] as Timestamp?)?.toDate(),
       completedAt: (m['completedAt'] as Timestamp?)?.toDate(),
       noShowReports: Map<String, dynamic>.from((m['noShowReports'] as Map?) ?? const {}),
+      cancelReason: m['cancelReason'] as String? ?? '',
     );
   }
 }
@@ -556,6 +607,8 @@ class MonthlyRow {
     required this.driverLegs,
     required this.passengerLegs,
     required this.kgSaved,
+    this.driverRides = 0,
+    this.passengerRides = 0,
   });
   final String uid;
   final String name;
@@ -564,6 +617,8 @@ class MonthlyRow {
   final int driverLegs;
   final int passengerLegs;
   final double kgSaved;
+  final int driverRides;
+  final int passengerRides;
 
   factory MonthlyRow.fromMap(String uid, Map<String, dynamic> m) => MonthlyRow(
         uid: uid,
@@ -573,6 +628,8 @@ class MonthlyRow {
         driverLegs: (m['driverLegs'] as num?)?.toInt() ?? 0,
         passengerLegs: (m['passengerLegs'] as num?)?.toInt() ?? 0,
         kgSaved: (m['kgSaved'] as num?)?.toDouble() ?? 0,
+        driverRides: (m['driverRides'] as num?)?.toInt() ?? 0,
+        passengerRides: (m['passengerRides'] as num?)?.toInt() ?? 0,
       );
 }
 

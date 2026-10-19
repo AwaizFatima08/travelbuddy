@@ -217,14 +217,18 @@ class Repo {
 
   // ------------------------------------------------------------------ posts
 
-  /// Open posts (offers + requests) for one window on one date — the board. ONE listener.
-  Stream<List<Post>> windowPosts(String siteId, String date, String windowId) => _posts
-      .where('siteId', isEqualTo: siteId)
-      .where('date', isEqualTo: date)
-      .where('windowId', isEqualTo: windowId)
-      .where('status', isEqualTo: 'OPEN')
-      .snapshots()
-      .map((s) => s.docs.map(Post.fromDoc).toList()..sort((a, b) => a.departAt.compareTo(b.departAt)));
+  /// Open posts for one direction leaving within the next ~75 minutes — the board. ONE listener.
+  Stream<List<Post>> boardPosts(String siteId, Direction direction) {
+    final now = DateTime.now();
+    return _posts
+        .where('siteId', isEqualTo: siteId)
+        .where('direction', isEqualTo: enumName(direction))
+        .where('status', isEqualTo: 'OPEN')
+        .where('departAt', isGreaterThanOrEqualTo: Timestamp.fromDate(now.subtract(const Duration(minutes: 20))))
+        .where('departAt', isLessThanOrEqualTo: Timestamp.fromDate(now.add(const Duration(minutes: 75))))
+        .snapshots()
+        .map((s) => s.docs.map(Post.fromDoc).toList()..sort((a, b) => a.departAt.compareTo(b.departAt)));
+  }
 
   /// My posts that are still open (so the home screen can show "you're offering / waiting").
   Stream<List<Post>> myOpenPosts(String uid) => _posts
@@ -236,7 +240,8 @@ class Repo {
   Future<String> createPost({
     required UserProfile me,
     required PostKind kind,
-    required WindowSlotData slot,
+    required Direction direction,
+    required String date,
     required DateTime departAt,
     required String fromPlaceId,
     required String toPlaceId,
@@ -251,8 +256,9 @@ class Repo {
       'userId': me.uid,
       'userName': me.name,
       'userPhone': me.phone,
-      'windowId': slot.windowId,
-      'date': slot.date,
+      'direction': enumName(direction),
+      'windowId': 'other',
+      'date': date,
       'departAt': Timestamp.fromDate(departAt),
       'fromPlaceId': fromPlaceId,
       'toPlaceId': toPlaceId,
@@ -267,7 +273,7 @@ class Repo {
     return ref.id;
   }
 
-  Future<void> cancelPost(String postId) => _call('cancelPost', {'postId': postId});
+  Future<void> cancelPost(String postId, {String reason = ''}) => _call('cancelPost', {'postId': postId, 'reason': reason});
 
   Future<void> setAutoAccept(String postId, bool on) => _posts.doc(postId).update({'autoAccept': on});
 
@@ -322,7 +328,11 @@ class Repo {
   Future<Map<String, dynamic>> joinOffer(String offerPostId, String pickupPlaceId, String dropPlaceId) =>
       _call('joinOffer', {'offerPostId': offerPostId, 'pickupPlaceId': pickupPlaceId, 'dropPlaceId': dropPlaceId});
 
-  Future<void> cancelRide(String rideId) => _call('cancelRide', {'rideId': rideId});
+  Future<void> cancelRide(String rideId, {String reason = ''}) => _call('cancelRide', {'rideId': rideId, 'reason': reason});
+  Future<bool> markArrived(String rideId) async => (await _call('markArrived', {'rideId': rideId}))['completed'] == true;
+  Future<int> sendTestNotification() async => ((await _call('sendTestNotification', {}))['devices'] as num?)?.toInt() ?? 0;
+  Future<void> setReminder(String windowId, bool on) => updateMyProfile({'reminders.$windowId': on});
+  Stream<Post?> postStream(String id) => _posts.doc(id).snapshots().map((d) => d.exists ? Post.fromDoc(d) : null);
   Future<void> markPickedUp(String rideId, {String? passengerUid}) =>
       _call('markPickedUp', {'rideId': rideId, if (passengerUid != null) 'passengerUid': passengerUid});
   Future<void> completeRide(String rideId) => _call('completeRide', {'rideId': rideId});
@@ -467,9 +477,3 @@ class Repo {
   }
 }
 
-/// The bits of a window slot a post needs (kept free of Flutter types so Repo stays testable).
-class WindowSlotData {
-  const WindowSlotData({required this.date, required this.windowId});
-  final String date;
-  final String windowId;
-}

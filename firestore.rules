@@ -1,10 +1,11 @@
 rules_version = '2';
 
-// TravelBuddy v2 security rules (docs/DESIGN-v2.md §12).
+// TravelBuddy v2.1 security rules (docs/DESIGN-v2.md §12, §16).
 //  - only approved (ACTIVE) members read anything beyond their own profile
 //  - users write only their own profile fields, their own posts and their own live position
-//  - rides, points, monthly totals and no-show reports are written ONLY by Cloud Functions
+//  - rides, points, monthly totals, reminders and no-show reports are written ONLY by Cloud Functions
 //  - live positions are readable only by the people in that ride
+//  - a post's leaving time must be within the next hour (v2.1 real-time booking)
 service cloud.firestore {
   match /databases/{db}/documents {
     function signedIn() { return request.auth != null; }
@@ -19,17 +20,17 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid
                     && request.resource.data.keys().hasOnly(
                          ['name','email','phone','employeeId','department','townshipLocation',
-                          'hasCar','siteId','accountStatus','role','createdAt'])
+                          'hasCar','siteId','accountStatus','role','createdAt','reminders'])
                     && request.resource.data.accountStatus == 'PENDING'
                     && request.resource.data.role == 'USER';
 
       // Admin: approve / block / unblock + audit (never the role — set by hand in the console).
-      // Self: profile fields, car flag, last role, push tokens. Points/noShows are server-only.
+      // Self: profile fields, car flag, last role, push tokens, slot reminders. Points/stats are server-only.
       allow update: if (admin() && request.auth.uid != uid
                         && changed().hasOnly(['accountStatus','audit','lastAdminActionAt'])
                         && request.resource.data.accountStatus in ['PENDING','ACTIVE','BLOCKED'])
                     || (signedIn() && request.auth.uid == uid
-                        && changed().hasOnly(['name','phone','department','townshipLocation','hasCar','lastRole','fcmTokens']));
+                        && changed().hasOnly(['name','phone','department','townshipLocation','hasCar','lastRole','fcmTokens','reminders']));
 
       allow delete: if signedIn() && request.auth.uid == uid;
     }
@@ -46,12 +47,16 @@ service cloud.firestore {
       allow create: if active()
                     && n().userId == request.auth.uid
                     && n().kind in ['OFFER','REQUEST']
+                    && n().direction in ['TO_PLANT','TO_TOWNSHIP']
                     && n().status == 'OPEN'
                     && n().seats is int && n().seats >= 1 && n().seats <= 4
                     && n().seatsLeft == n().seats
                     && (n().kind == 'OFFER' || n().seats == 1)
                     && n().date is string && n().date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-                    && n().departAt is timestamp && n().deleteAt is timestamp
+                    && n().departAt is timestamp
+                    && n().departAt > request.time - duration.value(5, 'm')
+                    && n().departAt < request.time + duration.value(65, 'm')
+                    && n().deleteAt is timestamp
                     && n().siteId == me().siteId
                     && !('rideId' in n());
       // Owner may only toggle auto-accept or change the note; everything else is server-side.
@@ -64,7 +69,6 @@ service cloud.firestore {
       allow read: if active() && (request.auth.uid in resource.data.participantIds || admin());
       allow write: if false;   // Cloud Functions only
 
-      // Live positions during a ride: participants read each other; each writes only their own.
       match /live/{uid} {
         function ride() { return get(/databases/$(db)/documents/rides/$(rideId)).data; }
         allow read: if active() && request.auth.uid in ride().participantIds;
@@ -85,6 +89,10 @@ service cloud.firestore {
     match /monthly/{docId} {
       allow read: if active();
       allow write: if false;
+    }
+
+    match /reminders/{docId} {
+      allow read, write: if false;   // server bookkeeping only
     }
 
     match /notifications/{uid}/items/{itemId} {

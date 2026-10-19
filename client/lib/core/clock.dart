@@ -58,6 +58,26 @@ class SiteClock {
     final u = upcoming(count: 1);
     return u.isEmpty ? null : u.first;
   }
+
+  /// The window running right now, if any (today only).
+  WindowSlot? running() {
+    final u = upcoming(count: 1);
+    return u.isNotEmpty && u.first.isRunning ? u.first : null;
+  }
+
+  /// Best-guess direction for a new post: the direction of the running or next window.
+  Direction suggestedDirection() {
+    final c = current();
+    if (c == null) return Direction.toPlant;
+    return c.window.from == Side.township ? Direction.toPlant : Direction.toTownship;
+  }
+
+  /// Leaving-time choices for a new post (v2.1): now rounded up to 5 min, then every 5 min up to +60 min.
+  List<DateTime> leavingChoices({int aheadMinutes = 60}) {
+    final now = DateTime.now().toUtc();
+    final rounded = DateTime.utc(now.year, now.month, now.day, now.hour, now.minute - now.minute % 5).add(const Duration(minutes: 5));
+    return [for (var m = 0; m <= aheadMinutes; m += 5) rounded.add(Duration(minutes: m))];
+  }
 }
 
 class WindowSlot {

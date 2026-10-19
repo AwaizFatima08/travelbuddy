@@ -55,6 +55,22 @@ class PushService {
     fm.onTokenRefresh.listen((t) => Repo.I.saveFcmToken(t));
   }
 
+  /// Current OS permission as a short label for Settings.
+  Future<String> permissionStatus() async {
+    try {
+      final s = await FirebaseMessaging.instance.getNotificationSettings();
+      return switch (s.authorizationStatus) {
+        AuthorizationStatus.authorized => 'Allowed',
+        AuthorizationStatus.provisional => 'Allowed (quiet)',
+        AuthorizationStatus.denied => 'Blocked by the phone',
+        AuthorizationStatus.notDetermined => 'Not asked yet',
+        _ => 'Blocked by the phone',
+      };
+    } catch (_) {
+      return 'Unknown';
+    }
+  }
+
   /// Ask for permission and register this device for push. Safe to call repeatedly.
   Future<void> enable() async {
     final fm = FirebaseMessaging.instance;

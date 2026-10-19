@@ -56,12 +56,20 @@ firebase deploy --only functions             # server logic
 ## How it works (short)
 
 - Every member chooses **Driving** or **Riding** per trip. Drivers offer seats; passengers post a request or join a car.
-- Matching = same site, direction, window, time ±15 min, same/neighbour pickup place. Matches get a push + in-app notification.
+- **v2.1 (19 Oct 2026):** booking is real-time, any hour of the day — pick the direction and a leaving time between
+  now and +60 min. The four decided slots (07:00, 12:45, 14:00, 17:15) only drive the **per-slot Mon–Fri reminders**
+  (Settings) and the reports. One open post per person; no new post while a ride is active.
+- Matching = same site, direction, time ±15 min, same/neighbour pickup place. Matches get a push + in-app notification.
 - Locking is a server transaction (no double booking). Points: driver +2 (with ≥1 passenger), passenger +1,
-  late cancel −1, no-show −2. Leaderboard and kg CO₂ per month.
+  late cancel −1, no-show −2. Leaderboard (top 3 highlighted), "My stats" and kg CO₂ per month.
+- Cancelling a post or ride takes an optional reason that the other side sees.
+- A ride completes when the driver taps **Complete ride**, when every passenger has tapped **I've arrived**, or
+  90 minutes after departure (safety net).
 - After locking, both sides share position with each other only, until pickup (Android: foreground service;
   web: while open). One "close by" alert.
+- Settings → Notifications shows the phone permission, registered devices and a **Send me a test notification** button.
+- Admin → Reports: per-user monthly table with **Copy CSV**.
 
 ## Versioning
 
-Bump `version:` in `client/pubspec.yaml` (e.g. `2.0.1+3`) for every Play upload.
+Bump `version:` in `client/pubspec.yaml` (currently `2.1.0+3`) for every Play upload.

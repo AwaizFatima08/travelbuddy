@@ -15,14 +15,14 @@ const user = (uid, status = 'ACTIVE', role = 'USER') => ({
 });
 
 const post = (uid, kind = 'OFFER', extra = {}) => ({
-  siteId: 'ffl', kind, userId: uid, userName: uid, userPhone: '0300', windowId: 'morning', date: '2026-10-16',
+  siteId: 'ffl', kind, userId: uid, userName: uid, userPhone: '0300', windowId: 'morning', date: '2026-10-16', direction: 'TO_PLANT',
   departAt: ts(60), fromPlaceId: 'e_type_end', toPlaceId: 'ccr_parking', seats: kind === 'OFFER' ? 3 : 1,
   seatsLeft: kind === 'OFFER' ? 3 : 1, status: 'OPEN', autoAccept: true, note: '', createdAt: serverTimestamp(),
   deleteAt: ts(60 * 24 * 30), ...extra,
 });
 
 const ride = (extra = {}) => ({
-  siteId: 'ffl', driverId: 'dan', driverName: 'DAN', driverPhone: '0300', offerPostId: 'o1', windowId: 'morning',
+  siteId: 'ffl', driverId: 'dan', driverName: 'DAN', driverPhone: '0300', offerPostId: 'o1', windowId: 'morning', direction: 'TO_PLANT',
   date: '2026-10-16', departAt: ts(60), fromPlaceId: 'e_type_end', toPlaceId: 'ccr_parking', status: 'LOCKED',
   passengers: { pam: { name: 'PAM', phone: '0300', pickupPlaceId: 'e_type_end', postId: 'r1', pickedUp: false } },
   participantIds: ['dan', 'pam'], reminded: false, hasOpenDispute: false, deleteAt: ts(60 * 24 * 30), ...extra,

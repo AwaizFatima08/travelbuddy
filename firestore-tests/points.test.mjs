@@ -52,7 +52,7 @@ let counter = 0;
 async function post(uid, kind, { minutes = 30, windowId = 'morning', seats = 3, date = '2026-10-20' } = {}) {
   const id = `${kind.toLowerCase()}_${uid}_${++counter}`;
   await seed((f) => setDoc(doc(f, 'posts', id), {
-    siteId: 'ffl', kind, userId: uid, userName: uid.toUpperCase(), userPhone: '0300', windowId, date,
+    siteId: 'ffl', kind, userId: uid, userName: uid.toUpperCase(), userPhone: '0300', windowId, date, direction: 'TO_PLANT',
     departAt: Timestamp.fromMillis(Date.now() + minutes * 60000), fromPlaceId: 'e_type_end', toPlaceId: 'ccr_parking',
     seats: kind === 'OFFER' ? seats : 1, seatsLeft: kind === 'OFFER' ? seats : 1, status: 'OPEN', autoAccept: true, note: '',
     createdAt: Timestamp.now(), deleteAt: Timestamp.fromMillis(Date.now() + 30 * 864e5),
@@ -171,6 +171,7 @@ test('no-show: passenger reported (−2 and ride +1 removed); dispute; admin uph
   await assert.rejects(call('dan', 'resolveNoShow', { rideId, uid: 'pam', upheld: false }), /Admins only/);
   await call('admin', 'resolveNoShow', { rideId, uid: 'pam', upheld: true });
   assert.equal(await points('pam'), before - 3);
+  await call('dan', 'completeRide', { rideId });   // v2.1: one active ride per person — free dan for the next one
   // a second report cannot be disputed twice; a cancelled report restores everything
   const offer2 = await post('dan', 'OFFER', { minutes: -10, windowId: 'morning', seats: 2, date: '2026-10-22' });
   const { rideId: ride2 } = await call('pam', 'joinOffer', { offerPostId: offer2, pickupPlaceId: 'e_type_end', dropPlaceId: 'ccr_parking' });
@@ -180,6 +181,7 @@ test('no-show: passenger reported (−2 and ride +1 removed); dispute; admin uph
   await call('admin', 'resolveNoShow', { rideId: ride2, uid: 'pam', upheld: false });
   assert.equal(await points('pam'), b2);
   assert.equal((await ride(ride2)).hasOpenDispute, false);
+  await call('dan', 'completeRide', { rideId: ride2 });
 });
 
 test('no-show: driver reported → ride NO_SHOW, driver −2 −2, passenger keeps +1', async () => {
@@ -197,6 +199,46 @@ test('no-show report too early is refused', async () => {
   const offer = await post('dan', 'OFFER', { minutes: 20, windowId: 'lunch_in', seats: 2, date: '2026-10-23' });
   const { rideId } = await call('pam', 'joinOffer', { offerPostId: offer, pickupPlaceId: 'e_type_end', dropPlaceId: 'ccr_parking' });
   await assert.rejects(call('dan', 'reportNoShow', { rideId, uid: 'pam' }), /Wait until/);
+  globalThis.rideB = rideId;
+});
+
+test('v2.1: one open post per person, none while a ride is active; arrived → auto-complete; reasons kept', async () => {
+  // dan is driving rideB (LOCKED) → a new offer by dan is refused by the server (cancelled with a reason)
+  const blocked = await post('dan', 'OFFER', { minutes: 30, date: '2026-10-23' });
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal((await postDoc(blocked)).status, 'CANCELLED');
+  assert.equal((await postDoc(blocked)).cancelReason, 'Already in a ride');
+  // sam posts two requests: the older one is cancelled automatically
+  const s1 = await post('sam', 'REQUEST', { minutes: 30, date: '2026-10-23' });
+  await new Promise((r) => setTimeout(r, 800));
+  const s2 = await post('sam', 'REQUEST', { minutes: 40, date: '2026-10-23' });
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal((await postDoc(s1)).status, 'CANCELLED'); assert.equal((await postDoc(s1)).replacedBy, s2);
+  assert.equal((await postDoc(s2)).status, 'OPEN');
+  assert.ok(['lunch_in', 'other'].includes((await postDoc(s2)).windowId));
+  // passenger arrives → the only passenger → ride completes by itself; completed counters updated
+  const before = { dan: await points('dan'), pam: await points('pam') };
+  const r = await call('pam', 'markArrived', { rideId: globalThis.rideB });
+  assert.equal(r.completed, true);
+  const rb = await ride(globalThis.rideB);
+  assert.equal(rb.status, 'COMPLETED'); assert.equal(rb.completedBy, 'passengers'); assert.equal(rb.passengers.pam.arrived, true);
+  assert.equal(await points('dan'), before.dan); assert.equal(await points('pam'), before.pam);
+  const m = await monthly();
+  assert.ok(m.users.pam.passengerRides >= 1); assert.ok(m.users.dan.driverRides >= 1);
+  const danUser = await seed(async (f) => (await getDoc(doc(f, 'users', 'dan'))).data());
+  assert.ok(danUser.stats.driverRides >= 1);
+  // cancel with reason: stored on the ride and the offer; passenger told
+  const offer = await post('dan', 'OFFER', { minutes: 30, date: '2026-10-23', seats: 2 });
+  const { rideId } = await call('pam', 'joinOffer', { offerPostId: offer, pickupPlaceId: 'e_type_end', dropPlaceId: 'ccr_parking' });
+  await call('dan', 'cancelRide', { rideId, reason: 'Car trouble' });
+  assert.equal((await ride(rideId)).cancelReason, 'Car trouble');
+  assert.equal((await postDoc(offer)).cancelReason, 'Car trouble');
+  const n = await seed(async (f) => (await getDocs(collection(f, 'notifications/pam/items'))).docs.map((d) => d.data().body));
+  assert.ok(n.some((b) => b.includes('Car trouble')));
+  // test notification: no devices → 0
+  assert.equal((await call('pam', 'sendTestNotification')).devices, 0);
+  await call('sam', 'cancelPost', { postId: s2, reason: 'found a lift' });
+  assert.equal((await postDoc(s2)).cancelReason, 'found a lift');
 });
 
 test('cancelPost: open post cancelled; a locked offer must cancel the ride instead', async () => {

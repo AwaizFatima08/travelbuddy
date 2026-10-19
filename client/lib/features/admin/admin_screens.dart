@@ -1,5 +1,6 @@
 // Admin: approvals, members & audit, places editor, windows editor, disputes, reports, site setup.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../app/widgets.dart';
@@ -473,7 +474,7 @@ class _DisputesScreenState extends State<DisputesScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${windowLabelFor(site, r.windowId, r.date)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(rideWhen(site, r.windowId, r.date, r.direction), style: const TextStyle(fontWeight: FontWeight.bold)),
                       Text('Reported: ${e.key == r.driverId ? r.driverName : (r.passengers[e.key]?.name ?? e.key)}'),
                       Text('By: ${(e.value as Map)['byName'] ?? ''}'),
                       Text('Driver ${r.driverName} · passengers ${r.passengers.values.map((p) => p.name).join(', ')}'),
@@ -561,16 +562,57 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
               for (final e in (r['members'] as Map).entries) LabeledValue('${e.key}', '${e.value}'),
             ]))),
-            const SectionTitle('Top 20 members'),
-            ...(() {
-              final users = (r['users'] as Map).entries.map((e) => MonthlyRow.fromMap(e.key as String, Map<String, dynamic>.from(e.value as Map))).toList()
-                ..sort((a, b) => b.points.compareTo(a.points));
-              return [for (final u in users.take(20)) ListTile(dense: true, title: Text(u.name), subtitle: Text(u.department), trailing: Text('${u.points} pts · ${u.driverLegs}D/${u.passengerLegs}P'))];
-            })(),
+            const SectionTitle('Completed by direction'),
+            Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+              for (final e in ((r['byDirection'] as Map?) ?? const {}).entries) LabeledValue('${e.key}', '${e.value}'),
+              if (((r['byDirection'] as Map?) ?? const {}).isEmpty) const Text('—'),
+            ]))),
+            Row(children: [
+              const Expanded(child: SectionTitle('All members this month')),
+              TextButton.icon(onPressed: () => _copyCsv(r), icon: const Icon(Icons.copy), label: const Text('Copy CSV')),
+            ]),
+            const Text('CSV is copied to the clipboard — paste it into Excel, Sheets or an email.', style: TextStyle(fontSize: 12)),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columnSpacing: 14,
+                headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                dataTextStyle: const TextStyle(fontSize: 12),
+                columns: const [
+                  DataColumn(label: Text('Name')), DataColumn(label: Text('Dept')), DataColumn(label: Text('Pts'), numeric: true),
+                  DataColumn(label: Text('Drv locked'), numeric: true), DataColumn(label: Text('Pax locked'), numeric: true),
+                  DataColumn(label: Text('Drv done'), numeric: true), DataColumn(label: Text('Pax done'), numeric: true),
+                  DataColumn(label: Text('kg CO₂'), numeric: true),
+                ],
+                rows: [
+                  for (final u in _users(r))
+                    DataRow(cells: [
+                      DataCell(Text(u.name)), DataCell(Text(u.department)), DataCell(Text('${u.points}')),
+                      DataCell(Text('${u.driverLegs}')), DataCell(Text('${u.passengerLegs}')),
+                      DataCell(Text('${u.driverRides}')), DataCell(Text('${u.passengerRides}')),
+                      DataCell(Text(u.kgSaved.toStringAsFixed(1))),
+                    ]),
+                ],
+              ),
+            ),
           ],
         ]),
       ),
     );
+  }
+
+  List<MonthlyRow> _users(Map<String, dynamic> r) =>
+      (r['users'] as Map).entries.map((e) => MonthlyRow.fromMap(e.key as String, Map<String, dynamic>.from(e.value as Map))).toList()
+        ..sort((a, b) => b.points.compareTo(a.points));
+
+  Future<void> _copyCsv(Map<String, dynamic> r) async {
+    String q(Object? v) => '"${(v ?? '').toString().replaceAll('"', '""')}"';
+    final b = StringBuffer('month,name,department,points,driver_locked,passenger_locked,driver_completed,passenger_completed,kg_co2\n');
+    for (final u in _users(r)) {
+      b.writeln([q(r['month']), q(u.name), q(u.department), u.points, u.driverLegs, u.passengerLegs, u.driverRides, u.passengerRides, u.kgSaved.toStringAsFixed(2)].join(','));
+    }
+    await Clipboard.setData(ClipboardData(text: b.toString()));
+    if (mounted) toast(context, 'CSV copied (${_users(r).length} rows)');
   }
 
   String _shift(String ym, int m) {

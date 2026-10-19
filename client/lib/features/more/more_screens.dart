@@ -87,25 +87,17 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           child: ListView(padding: const EdgeInsets.all(16), children: [
             ErrorNote(error),
             if (data == null && error == null) const Loading(),
-            Card(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('You: ${me.points} points all-time', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  Text('Community this month: ${(totals['passengerLegs'] ?? 0)} shared seats · '
-                      '${((totals['kgSaved'] ?? 0) as num).toStringAsFixed(1)} kg CO₂ saved'),
-                  const Text('Driver +2 per ride with a passenger · passenger +1 · no-show −2 · late cancel −1', style: TextStyle(fontSize: 12)),
-                ]),
-              ),
-            ),
+            _MyStatsCard(me: me, rows: rows, totals: totals, ym: ym),
             const SectionTitle('🏆 Top this month'),
             if (rows.isEmpty && data != null) const EmptyNote('No rides this month yet.'),
             for (var i = 0; i < rows.length && i < 10; i++)
               ListTile(
                 dense: true,
-                leading: CircleAvatar(radius: 14, child: Text('${i + 1}', style: const TextStyle(fontSize: 12))),
-                title: Text(rows[i].name + (rows[i].uid == me.uid ? ' (you)' : '')),
+                tileColor: i < 3 ? Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.5) : null,
+                leading: i < 3
+                    ? Text(const ['🥇', '🥈', '🥉'][i], style: const TextStyle(fontSize: 22))
+                    : CircleAvatar(radius: 14, child: Text('${i + 1}', style: const TextStyle(fontSize: 12))),
+                title: Text(rows[i].name + (rows[i].uid == me.uid ? ' (you)' : ''), style: TextStyle(fontWeight: i < 3 ? FontWeight.bold : null)),
                 subtitle: Text('${rows[i].department} · ${rows[i].driverLegs} as driver, ${rows[i].passengerLegs} as passenger'),
                 trailing: Text('${rows[i].points} pts', style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
@@ -145,6 +137,56 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         'NO_SHOW_REVERSED_RIDE_POINTS' => 'Ride points restored',
         _ => r,
       };
+}
+
+/// "My stats": this month (from the monthly doc) and all-time (from the profile counters).
+class _MyStatsCard extends StatelessWidget {
+  const _MyStatsCard({required this.me, required this.rows, required this.totals, required this.ym});
+  final UserProfile me;
+  final List<MonthlyRow> rows;
+  final Map<String, dynamic> totals;
+  final String ym;
+
+  @override
+  Widget build(BuildContext context) {
+    final idx = rows.indexWhere((r) => r.uid == me.uid);
+    final mine = idx < 0 ? null : rows[idx];
+    final rank = idx < 0 ? '—' : '#${idx + 1} of ${rows.length}';
+    TableRow row(String label, String month, String all) => TableRow(children: [
+          Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Text(label, style: const TextStyle(fontSize: 13))),
+          Text(month, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(all, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ]);
+    return Card(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('My stats', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Table(
+            columnWidths: const {0: FlexColumnWidth(2), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
+            children: [
+              TableRow(children: [
+                const SizedBox(),
+                Text(ym, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                const Text('All-time', textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+              ]),
+              row('Points', '${mine?.points ?? 0}', '${me.points}'),
+              row('Rides completed as driver', '${mine?.driverRides ?? 0}', '${me.driverRides}'),
+              row('Rides completed as passenger', '${mine?.passengerRides ?? 0}', '${me.passengerRides}'),
+              row('Rides locked (driver / passenger)', '${mine?.driverLegs ?? 0} / ${mine?.passengerLegs ?? 0}', '—'),
+              row('Rank this month', rank, '—'),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text('Community this month: ${(totals['passengerLegs'] ?? 0)} shared seats · '
+              '${((totals['kgSaved'] ?? 0) as num).toStringAsFixed(1)} kg CO₂ saved', style: const TextStyle(fontSize: 12)),
+          const Text('Driver +2 per ride with a passenger · passenger +1 · no-show −2 · late cancel −1', style: TextStyle(fontSize: 12)),
+        ]),
+      ),
+    );
+  }
 }
 
 class HistoryScreen extends StatefulWidget {
@@ -195,7 +237,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           for (final r in rides)
             Card(
               child: ListTile(
-                title: Text('${windowLabelFor(scope.site, r.windowId, r.date)} · ${scope.clock.hhmm(r.departAt)}'),
+                title: Text('${rideWhen(scope.site, r.windowId, r.date, r.direction)} · ${scope.clock.hhmm(r.departAt)}'),
                 subtitle: Text(r.isDriver(scope.me.uid)
                     ? 'You drove ${r.passengers.values.map((p) => p.name).join(', ')}'
                     : 'You rode with ${r.driverName}'),
@@ -286,21 +328,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ListTile(leading: const Icon(Icons.edit), title: const Text('Edit phone / department / township'), onTap: () => _edit(me)),
           if (widget.adminTile != null) widget.adminTile!,
-          const SectionTitle('Reliable alerts'),
-          ListTile(
-            leading: const Icon(Icons.notifications),
-            title: const Text('Turn on notifications'),
-            subtitle: const Text('Needed for ride offers, requests and the "driver is close" alert'),
-            onTap: () => runAction(context, () => PushService.I.enable(), done: 'Notifications are on'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.battery_saver),
-            title: Text('Battery settings'),
-            subtitle: Text('Some phones (Xiaomi, Oppo, Vivo, Samsung) stop apps in the background. Set TravelBuddy to "Unrestricted" / "Don\'t optimise" in your phone\'s battery settings.'),
-          ),
+          const SectionTitle('Notifications'),
+          _NotificationCard(me: me),
+          const SectionTitle('Slot reminders (Mon–Fri)'),
+          const Text('A reminder 10 minutes before each slot you switch on, Monday to Friday, unless you already have a ride. Booking itself is open all day.', style: TextStyle(fontSize: 12)),
+          for (final w in (TbScope.of(context).site.windows.where((w) => w.active).toList()..sort((a, b) => a.order.compareTo(b.order))))
+            SwitchListTile(
+              dense: true,
+              title: Text('${w.name} · ${w.start}'),
+              subtitle: Text(w.directionLabel),
+              value: me.reminders[w.id] ?? false,
+              onChanged: (v) => runAction(context, () => Repo.I.setReminder(w.id, v)),
+            ),
           const SectionTitle('About'),
           ListTile(leading: const Icon(Icons.privacy_tip), title: const Text('Privacy policy'), onTap: () => launchUrl(Uri.parse(privacyUrl), mode: LaunchMode.externalApplication)),
-          const Text('TravelBuddy 2.0 · free volunteer carpool, no payments.', style: TextStyle(fontSize: 12)),
+          const Text('TravelBuddy 2.1 · free volunteer carpool, no payments.', style: TextStyle(fontSize: 12)),
           const SizedBox(height: 8),
           Card(
             child: Padding(
@@ -358,5 +400,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (ok == true && mounted) {
       runAction(context, () => Repo.I.updateMyProfile({'phone': phone.text.trim(), 'department': dept.text.trim(), 'townshipLocation': town.text.trim()}), done: 'Saved');
     }
+  }
+}
+
+/// Permission state, registered devices, enable + test buttons.
+class _NotificationCard extends StatefulWidget {
+  const _NotificationCard({required this.me});
+  final UserProfile me;
+  @override
+  State<_NotificationCard> createState() => _NotificationCardState();
+}
+
+class _NotificationCardState extends State<_NotificationCard> {
+  String status = '…';
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final s = await PushService.I.permissionStatus();
+    if (mounted) setState(() => status = s);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final me = widget.me;
+    final ok = status.startsWith('Allowed') && me.deviceCount > 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(ok ? Icons.notifications_active : Icons.notifications_off, color: ok ? tbGreen : Theme.of(context).colorScheme.error),
+            const SizedBox(width: 8),
+            Expanded(child: Text(ok ? 'Notifications are on' : 'Notifications are not working yet', style: const TextStyle(fontWeight: FontWeight.bold))),
+          ]),
+          LabeledValue('Phone permission', status),
+          LabeledValue('Devices registered', '${me.deviceCount}'),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            FilledButton.tonal(
+              onPressed: () async {
+                await runAction(context, () => PushService.I.enable(), done: 'Done');
+                _refresh();
+              },
+              child: const Text('Turn on / register this device'),
+            ),
+            OutlinedButton(
+              onPressed: () => runAction(context, () async {
+                final n = await Repo.I.sendTestNotification();
+                if (n == 0) throw AppError('No device is registered. Tap "Turn on" first, then allow notifications.');
+              }, done: 'Test sent — it should pop up within a few seconds'),
+              child: const Text('Send me a test notification'),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          const Text('If the test does not arrive: allow notifications for TravelBuddy in the phone settings, and set battery use to "Unrestricted" (Oppo, Xiaomi, Vivo, Samsung stop background apps).', style: TextStyle(fontSize: 12)),
+        ]),
+      ),
+    );
   }
 }

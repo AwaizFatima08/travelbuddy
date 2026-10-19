@@ -69,7 +69,8 @@ class _RideScreenState extends State<RideScreen> {
                       Expanded(child: Text(isDriver ? 'You are driving' : 'Your ride', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
                       rideStatusPill(ride.status),
                     ]),
-                    LabeledValue('When', '${windowLabelFor(site, ride.windowId, ride.date)} · leaving ${clock.hhmm(ride.departAt)}'),
+                    LabeledValue('When', '${rideWhen(site, ride.windowId, ride.date, ride.direction)} · leaving ${clock.hhmm(ride.departAt)}'),
+                    if (ride.cancelReason.isNotEmpty) LabeledValue('Reason', ride.cancelReason),
                     LabeledValue('Route', '${site.place(ride.fromPlaceId)?.name ?? ''} → ${site.place(ride.toPlaceId)?.name ?? ''}'),
                   ]),
                 ),
@@ -79,7 +80,7 @@ class _RideScreenState extends State<RideScreen> {
               _Person(role: 'Driver', name: ride.driverName, phone: isDriver ? '' : ride.driverPhone),
               for (final p in ride.passengers.values)
                 _Person(
-                  role: 'Passenger · ${site.place(p.pickupPlaceId)?.name ?? ''}${p.pickedUp ? ' · picked up ✅' : ''}',
+                  role: 'Passenger · ${site.place(p.pickupPlaceId)?.name ?? ''}${p.arrived ? ' · arrived ✅' : p.pickedUp ? ' · picked up ✅' : ''}',
                   name: p.name,
                   phone: p.uid == me.uid ? '' : p.phone,
                   trailing: isDriver && ride.isActive && !p.pickedUp
@@ -90,6 +91,8 @@ class _RideScreenState extends State<RideScreen> {
               if (ride.isFinished)
                 Text('This ride is ${ride.status.name.toLowerCase()}.', style: Theme.of(context).textTheme.bodyLarge)
               else if (isDriver) ...[
+                const Text('Close the ride when everyone is dropped off. It also closes by itself once every passenger taps "I\'ve arrived", or 90 minutes after departure.', style: TextStyle(fontSize: 12)),
+                const SizedBox(height: 6),
                 FilledButton(
                   onPressed: busy ? null : () => _act(() async {
                         await LiveShare.I.stop();
@@ -109,6 +112,18 @@ class _RideScreenState extends State<RideScreen> {
                     onPressed: busy ? null : () => _act(() => Repo.I.markPickedUp(ride.id), done: "You're in. Have a good trip!"),
                     child: const Text("I've been picked up"),
                   ),
+                if (!(ride.passengers[me.uid]?.arrived ?? false)) ...[
+                  const SizedBox(height: 8),
+                  FilledButton.tonal(
+                    onPressed: busy ? null : () => _act(() async {
+                          await LiveShare.I.stop();
+                          final done = await Repo.I.markArrived(ride.id);
+                          if (!context.mounted) return;
+                          toast(context, done ? 'Everyone has arrived — ride completed 🌱' : 'Noted. Thanks for riding!');
+                        }),
+                    child: const Text("I've arrived"),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 TextButton(
                   style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
@@ -155,9 +170,12 @@ class _RideScreenState extends State<RideScreen> {
       danger: true,
     );
     if (!ok || !mounted) return;
+    final reason = await askReason(context, isDriver ? 'Tell your passengers why (optional)' : 'Tell the driver why (optional)',
+        isDriver ? 'Cancel ride' : 'Leave', required: false);
+    if (reason == null || !mounted) return;
     await _act(() async {
       await LiveShare.I.stop();
-      await Repo.I.cancelRide(ride.id);
+      await Repo.I.cancelRide(ride.id, reason: reason);
       if (mounted) Navigator.pop(context);
     }, done: isDriver ? 'Ride cancelled' : 'You left the ride');
   }

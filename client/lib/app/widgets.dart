@@ -256,5 +256,11 @@ String staleText(DateTime? at) {
 
 String windowLabelFor(Site site, String windowId, String date) {
   final w = site.window(windowId);
-  return w == null ? windowId : '${prettyDate(date)} · ${w.name} ${w.start}–${w.end}';
+  return w == null ? prettyDate(date) : '${prettyDate(date)} · ${w.name} ${w.start}–${w.end}';
+}
+
+/// "Mon 20 Oct · Township → Plant" (+ slot name when the ride falls in a decided slot).
+String rideWhen(Site site, String windowId, String date, Direction direction) {
+  final w = site.window(windowId);
+  return '${prettyDate(date)} · ${direction.label}${w == null ? '' : ' · ${w.name}'}';
 }

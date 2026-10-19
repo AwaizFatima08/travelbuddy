@@ -1,6 +1,7 @@
 # TravelBuddy — Play Console guide (internal testing → closed testing)
 
 > **v2 (Flutter) notes — 16 Oct 2026:** same package and upload key, so v2 uploads as an update (versionCode 2).
+> **v2.1 — 19 Oct 2026:** pilot feedback build, `2.1.0+3` (versionCode 3). Release notes: real-time booking any time of day, slot reminders Mon–Fri, cancel reasons, "I've arrived", notification test, My stats, admin CSV.
 > Location is now used by **both** drivers and passengers (only after a ride is locked, until pickup). Google sign-in added.
 > Build with `./scripts/build-release.sh`; the bundle is at `client/build/app/outputs/bundle/release/app-release.aab`.
 

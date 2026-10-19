@@ -194,3 +194,12 @@ Intercity (v2.2) adds `kind = INTERCITY` posts with city and date — no change 
 | 4 | Auto-accept on by default when a passenger joins an offered car; driver can switch it off |
 | 5 | Web app at `travelbuddy.homilabs.org/app/` on the existing Hostinger site (no new DNS record) |
 | — | Platform Flutter (Android + web); Blaze plan already on; solo driving earns 0; no gender filters; intercity later and free; login by any email or Google, no SMS/WhatsApp; English only; v2.0 = general shift 07:30–17:15 |
+
+
+## 16. v2.1.0 changes (decided 19 Oct 2026 after the pilot)
+
+See `docs/PILOT-FEEDBACK-2026-10-19.md` for the full list. In short: all-day booking (direction + leaving time within the
+next hour, matching ±15 min), one open post per person and none while a ride is active, cancel with optional reason,
+passenger "I've arrived" + driver close + 90-min safety net, per-slot Mon–Fri reminders 10 min before the slot,
+notification controls and test button in Settings, My-stats card with top 3, admin per-user table + CSV export.
+§4 windows are now used only for reminders and reports.

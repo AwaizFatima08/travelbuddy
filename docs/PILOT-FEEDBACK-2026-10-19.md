@@ -25,5 +25,13 @@ Raw points from Homi after the live run. To be concluded collectively; nothing h
 9. **Driver dashboard:** completed rides, own score, leaderboard with **top 3**.
 10. **Admin:** complete statistics and reporting access.
 
+## Reminders / slots (added later the same day)
+11. **Per-slot reminders, per user:** for the 4 decided slots, each user can switch a reminder **on/off per slot**,
+    applying daily **Monday–Friday** (5 days). The reminder goes out only during the decided slot windows the user
+    has enabled.
+12. **Consequence:** booking stays available **all day** (any time), which also covers **rotating shifts** — the
+    4 decided windows are only used for the *active reminders/notifications*, not as a gate on when you can post.
+    (Relates to point 2: real-time booking, max 1 hour ahead, at any hour of the day.)
+
 ## Still coming
 Homi will add more points. Do not start implementation until the list is closed and decisions are taken together.

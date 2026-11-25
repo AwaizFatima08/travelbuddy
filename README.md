@@ -73,3 +73,11 @@ firebase deploy --only functions             # server logic
 ## Versioning
 
 Bump `version:` in `client/pubspec.yaml` (currently `2.1.0+3`) for every Play upload.
+
+## Web app for the Play Store build (25 Nov 2026)
+The TravelBuddy app on Google Play (`com.aistudio.carpool.kjqxcv`, built by another developer in Google AI
+Studio, Firebase project `gen-lang-client-0717949368`) now has a matching web client in `webapp/`, deployed at
+https://travelbuddy.homilabs.org/app/. It reads and writes the same Firestore documents as the phone app
+(see `webapp/README.md`). Build: `jobq run --name tb-ffl-web -- scripts/build-ffl-web.sh`.
+Review of that build and its source: `docs/HANDOVER-REVIEW-2026-11-25.md`.
+The HomiLabs Flutter app in `client/` (Firebase project travelbuddy-12d76, v2.1) is unchanged and separate.

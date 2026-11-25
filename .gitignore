@@ -47,3 +47,14 @@ firestore-debug.log
 # Cloud Functions
 functions/node_modules/
 functions/*.log
+
+# FFL web app (webapp/): generated Firebase config and build output
+webapp/lib/firebase_options.dart
+webapp/build/
+webapp/.dart_tool/
+
+# Other developer's handover binaries (kept outside git; see docs/HANDOVER-REVIEW-2026-11-25.md)
+app-release/
+app-release.zip
+Carpool Package*/
+Carpool Package*.zip

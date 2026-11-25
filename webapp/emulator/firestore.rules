@@ -1,0 +1,769 @@
+// TravelBuddy Firestore Rules
+// Version: v_HARDENED_DISCOVERY_SECURITY_2026_09
+
+rules_version = '2';
+
+service cloud.firestore {
+
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // COMMON AUTH / USER HELPERS
+    // ============================================================
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentUserExists() {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        );
+    }
+
+    function currentUser() {
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      );
+    }
+
+    function isAdmin() {
+      return currentUserExists()
+        && (
+          currentUser().data.get('role', 'USER') in ['ADMIN', 'admin', 'Admin']
+          || currentUser().data.get('isAdmin', false) == true
+        );
+    }
+
+    function validRole(role) {
+      return role in [
+        'USER',
+        'ADMIN',
+        'user',
+        'admin'
+      ];
+    }
+
+    function validAccountStatus(status) {
+      return status in [
+        'ACTIVE',
+        'PENDING_APPROVAL',
+        'BLOCKED',
+        'REMOVED',
+        'active',
+        'pending_approval',
+        'blocked',
+        'removed'
+      ];
+    }
+
+    function isActiveUser() {
+      return currentUserExists()
+        && (
+          currentUser().data.get('accountStatus', 'ACTIVE') in ['ACTIVE', 'active', 'Active']
+          || currentUser().data.get('role', 'USER') in ['ADMIN', 'admin', 'Admin']
+          || currentUser().data.get('isAdmin', false) == true
+        );
+    }
+
+    function validMode(mode) {
+      return mode in [
+        'PASSENGER',
+        'DRIVER'
+      ];
+    }
+
+
+    // ============================================================
+    // STATUS HELPERS
+    // ============================================================
+
+    function validRideStatus(status) {
+      return status in [
+        'OFFLINE',
+        'AVAILABLE',
+        'PARTIALLY_FULL',
+        'FULL',
+        'RIDE_STARTED',
+        'COMPLETED',
+        'CANCELLED',
+        'EXPIRED'
+      ];
+    }
+
+    function validRequestStatus(status) {
+      return status in [
+        'REQUESTED',
+        'ACCEPTED',
+        'RIDE_STARTED',
+        'REJECTED',
+        'CANCELLED',
+        'CANCELLED_BY_PASSENGER',
+        'CANCELLED_BY_DRIVER',
+        'CLOSED_UNCONFIRMED',
+        'EXPIRED',
+        'COMPLETED'
+      ];
+    }
+
+    function validNeedStatus(status) {
+      return status in [
+        'LOOKING',
+        'REQUESTED',
+        'MATCHED',
+        'COMPLETED',
+        'CANCELLED',
+        'EXPIRED'
+      ];
+    }
+
+    function validPickupSide(side) {
+      return side in [
+        'TOWNSHIP',
+        'PLANT',
+        'OTHER'
+      ];
+    }
+
+    function validCustomPickup(data) {
+      return !('pickupSide' in data)
+        || data.pickupSide != 'OTHER'
+        || (
+          'customPickupLocation' in data
+          && data.customPickupLocation is string
+          && data.customPickupLocation.size() > 0
+        );
+    }
+
+
+    // ============================================================
+    // RIDE LIST HELPERS
+    // ============================================================
+
+    function acceptedIds(data) {
+      return data.get('acceptedPassengerIds', []);
+    }
+
+    function completedIds(data) {
+      return data.get('completedPassengerIds', []);
+    }
+
+    function validRideSeatCounts(data) {
+      return data.totalSeats >= 1
+        && data.availableSeats >= 0
+        && data.availableSeats <= data.totalSeats;
+    }
+
+    function sameRideDriver() {
+      return request.resource.data.driverId
+        == resource.data.driverId;
+    }
+
+
+    // ============================================================
+    // USERS
+    // ============================================================
+
+    match /users/{userId} {
+
+      // Any signed-in corporate user can read a colleague's profile by direct ID lookup
+      allow get: if signedIn();
+
+      // Only admins can query or list all users
+      allow list: if signedIn() && isAdmin();
+
+      // User creates their own profile during registration or Google onboarding
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && (
+          request.resource.data.get('role', 'USER') in ['USER', 'ADMIN', 'user', 'admin']
+        )
+        && (
+          !('accountStatus' in request.resource.data)
+          || request.resource.data.get('accountStatus', 'PENDING_APPROVAL') in ['PENDING_APPROVAL', 'ACTIVE', 'pending_approval', 'active']
+        );
+
+      // User updates their own profile, or Admin manages account
+      allow update: if signedIn()
+        && (
+          // USER SELF UPDATE / GOOGLE ONBOARDING / PROFILE SAVE:
+          (
+            request.auth.uid == userId
+            // Cannot self-promote to ADMIN unless already ADMIN or admin is updating
+            && (
+              isAdmin()
+              || !(request.resource.data.get('role', 'USER') in ['ADMIN', 'admin'])
+              || resource.data.get('role', 'USER') in ['ADMIN', 'admin']
+            )
+            // Cannot unblock themselves if blocked or removed
+            && (
+              isAdmin()
+              || resource.data.get('accountStatus', 'PENDING_APPROVAL') in ['PENDING_APPROVAL', 'ACTIVE', 'pending_approval', 'active']
+              || request.resource.data.get('accountStatus', 'PENDING_APPROVAL') == resource.data.get('accountStatus', 'PENDING_APPROVAL')
+            )
+          )
+          ||
+          // ADMIN UPDATE:
+          isAdmin()
+        );
+
+      allow delete: if isAdmin()
+        && request.auth.uid != userId;
+    }
+
+
+    // ============================================================
+    // EMPLOYEE REGISTRY (DETERMINISTIC POINT LOOKUP FOR UNIQUENESS)
+    // ============================================================
+
+    match /employeeRegistry/{empId} {
+      // Allow point-read of a specific employee ID document for onboarding uniqueness check
+      allow get: if true;
+      allow list: if signedIn() && isAdmin();
+
+      // Normal user can only register their own employee ID during onboarding if it doesn't exist
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid;
+
+      allow update: if signedIn()
+        && (
+          ((resource.data.get('uid', '') == request.auth.uid || resource.data.get('uid', '') == '')
+           && request.resource.data.uid == request.auth.uid)
+          || isAdmin()
+        );
+
+      allow delete: if signedIn() && isAdmin();
+    }
+
+
+    // ============================================================
+    // AUDIT LOGS (ADMIN ONLY)
+    // ============================================================
+
+    match /auditLogs/{logId} {
+      allow read: if signedIn() && isAdmin();
+      allow create: if signedIn() && isAdmin();
+      allow update, delete: if false; // Immutable audit trail
+    }
+
+
+    // ============================================================
+    // RIDES
+    // ============================================================
+
+    match /rides/{rideId} {
+
+      // Zero-dependent read for high frequency discovery; admin last
+      allow read: if signedIn()
+        && (
+          resource.data.status in ['AVAILABLE', 'PARTIALLY_FULL']
+          || resource.data.driverId == request.auth.uid
+          || request.auth.uid in acceptedIds(resource.data)
+          || isAdmin()
+        );
+
+      // CREATE RIDE
+      allow create: if signedIn()
+        && isActiveUser()
+        && request.resource.data.driverId == request.auth.uid
+        && validRideSeatCounts(request.resource.data)
+        && validPickupSide(request.resource.data.pickupSide)
+        && validCustomPickup(request.resource.data)
+        && request.resource.data.status in [
+          'AVAILABLE',
+          'PARTIALLY_FULL',
+          'FULL'
+        ];
+
+      // UPDATE RIDE
+      allow update: if signedIn()
+        && (
+          // DRIVER OWNER CLOSE AVAILABILITY / CANCEL (no passenger impact)
+          (
+            resource.data.driverId == request.auth.uid
+            && sameRideDriver()
+            && request.resource.data.status in ['CANCELLED', 'OFFLINE']
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'status',
+                'updatedAt'
+              ])
+          )
+          ||
+          // DRIVER OWNER MASTER CLOSE (COMPLETED or CANCELLED)
+          (
+            resource.data.driverId == request.auth.uid
+            && sameRideDriver()
+            && request.resource.data.status in ['COMPLETED', 'CANCELLED']
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'status',
+                'completedPassengerIds',
+                'completedAt',
+                'updatedAt',
+                'finalPassengerCount',
+                'confirmedPassengerCount'
+              ])
+          )
+          ||
+          // DRIVER OWNER EDIT DETAILS / DIRECT ACCEPT SEAT ALLOCATION
+          (
+            resource.data.driverId == request.auth.uid
+            && sameRideDriver()
+            && validRideSeatCounts(request.resource.data)
+            && validRideStatus(request.resource.data.status)
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'acceptedPassengerIds',
+                'completedPassengerIds',
+                'availableSeats',
+                'status',
+                'creationSource',
+                'createdAt',
+                'startedAt',
+                'completedAt',
+                'expiresAt',
+                'updatedAt',
+                'pickupZone',
+                'pickupSide',
+                'customPickupLocation',
+                'totalSeats',
+                'message',
+                'commuteWindow',
+                'direction',
+                'destinationZone',
+                'finalPassengerCount',
+                'confirmedPassengerCount'
+              ])
+          )
+          ||
+          // PASSENGER DIRECTLY JOINS DRIVER-POSTED RIDE
+          (
+            resource.data.status in ['AVAILABLE', 'PARTIALLY_FULL']
+            && request.resource.data.status in ['PARTIALLY_FULL', 'FULL']
+            && sameRideDriver()
+            && !(request.auth.uid in acceptedIds(resource.data))
+            && request.auth.uid in acceptedIds(request.resource.data)
+            && acceptedIds(request.resource.data).size() == acceptedIds(resource.data).size() + 1
+            && acceptedIds(request.resource.data).hasAll(acceptedIds(resource.data))
+            && request.resource.data.availableSeats == resource.data.availableSeats - 1
+            && request.resource.data.totalSeats == resource.data.totalSeats
+            && (
+              (request.resource.data.availableSeats == 0 && request.resource.data.status == 'FULL')
+              ||
+              (request.resource.data.availableSeats > 0 && request.resource.data.status == 'PARTIALLY_FULL')
+            )
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'acceptedPassengerIds',
+                'availableSeats',
+                'status',
+                'updatedAt'
+              ])
+          )
+          ||
+          // PASSENGER CANCELS THEIR OWN SEAT
+          (
+            resource.data.status in ['AVAILABLE', 'PARTIALLY_FULL', 'FULL']
+            && request.auth.uid in acceptedIds(resource.data)
+            && !(request.auth.uid in acceptedIds(request.resource.data))
+            && acceptedIds(resource.data).size() == acceptedIds(request.resource.data).size() + 1
+            && acceptedIds(resource.data).hasAll(acceptedIds(request.resource.data))
+            && request.resource.data.totalSeats == resource.data.totalSeats
+            && request.resource.data.availableSeats == resource.data.availableSeats + 1
+            && sameRideDriver()
+            && (
+              (acceptedIds(request.resource.data).size() == 0 && request.resource.data.status == 'AVAILABLE')
+              ||
+              (acceptedIds(request.resource.data).size() > 0 && request.resource.data.status == 'PARTIALLY_FULL')
+            )
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'acceptedPassengerIds',
+                'availableSeats',
+                'status',
+                'updatedAt'
+              ])
+          )
+          ||
+          // PASSENGER COMPLETES OWN ACTIVE JOURNEY
+          (
+            resource.data.status in ['AVAILABLE', 'PARTIALLY_FULL', 'FULL', 'RIDE_STARTED']
+            && request.auth.uid in acceptedIds(resource.data)
+            && !(request.auth.uid in completedIds(resource.data))
+            && request.auth.uid in completedIds(request.resource.data)
+            && completedIds(request.resource.data).size() == completedIds(resource.data).size() + 1
+            && completedIds(request.resource.data).hasAll(completedIds(resource.data))
+            && acceptedIds(request.resource.data) == acceptedIds(resource.data)
+            && acceptedIds(request.resource.data).hasAll(completedIds(request.resource.data))
+            && sameRideDriver()
+            && request.resource.data.totalSeats == resource.data.totalSeats
+            && request.resource.data.availableSeats == resource.data.availableSeats
+            && request.resource.data.status in ['PARTIALLY_FULL', 'FULL', 'RIDE_STARTED', 'COMPLETED']
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'completedPassengerIds',
+                'status',
+                'completedAt',
+                'updatedAt',
+                'finalPassengerCount',
+                'confirmedPassengerCount'
+              ])
+          )
+          ||
+          // PASSENGER AUTO-CLOSES RIDE (ALL ACCEPTED PASSENGERS TERMINAL)
+          (
+            resource.data.status in ['AVAILABLE', 'PARTIALLY_FULL', 'FULL', 'RIDE_STARTED']
+            && request.auth.uid in acceptedIds(resource.data)
+            && sameRideDriver()
+            && acceptedIds(request.resource.data) == acceptedIds(resource.data)
+            && request.resource.data.totalSeats == resource.data.totalSeats
+            && request.resource.data.availableSeats == resource.data.availableSeats
+            && request.resource.data.status in ['COMPLETED', 'CANCELLED']
+            && (
+              (request.resource.data.status == 'COMPLETED' && completedIds(request.resource.data).size() > 0)
+              ||
+              (request.resource.data.status == 'CANCELLED' && completedIds(request.resource.data).size() == 0)
+            )
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'completedPassengerIds',
+                'status',
+                'completedAt',
+                'updatedAt',
+                'finalPassengerCount',
+                'confirmedPassengerCount'
+              ])
+          )
+          ||
+          // ADMIN UPDATE
+          (
+            isAdmin()
+            && sameRideDriver()
+            && validRideSeatCounts(request.resource.data)
+            && validRideStatus(request.resource.data.status)
+          )
+        );
+
+      allow delete: if signedIn()
+        && (
+          isAdmin()
+          || resource.data.driverId == request.auth.uid
+        );
+    }
+
+
+    // ============================================================
+    // RIDE REQUESTS / PARTICIPATION
+    // ============================================================
+
+    match /rideRequests/{requestId} {
+
+      // Ordered passenger owner OR driver owner OR isAdmin() last
+      allow read: if signedIn()
+        && (
+          resource.data.passengerId == request.auth.uid
+          || resource.data.driverId == request.auth.uid
+          || isAdmin()
+        );
+
+      // CREATE
+      allow create: if signedIn()
+        && isActiveUser()
+        && validRequestStatus(request.resource.data.status)
+        && (
+          // Passenger Joins Driver-Posted Ride
+          (
+            request.resource.data.passengerId == request.auth.uid
+            && request.resource.data.status == 'ACCEPTED'
+            && getAfter(
+              /databases/$(database)/documents/rides/$(request.resource.data.rideId)
+            ).data.driverId == request.resource.data.driverId
+            && request.auth.uid in acceptedIds(
+              getAfter(/databases/$(database)/documents/rides/$(request.resource.data.rideId)).data
+            )
+          )
+          ||
+          // Driver Directly Accepts Broadcast Passenger Need
+          (
+            request.resource.data.driverId == request.auth.uid
+            && request.resource.data.status == 'ACCEPTED'
+            && 'needId' in request.resource.data
+            && getAfter(
+              /databases/$(database)/documents/passengerNeeds/$(request.resource.data.needId)
+            ).data.status == 'MATCHED'
+            && getAfter(
+              /databases/$(database)/documents/passengerNeeds/$(request.resource.data.needId)
+            ).data.matchedDriverId == request.auth.uid
+            && getAfter(
+              /databases/$(database)/documents/passengerNeeds/$(request.resource.data.needId)
+            ).data.passengerId == request.resource.data.passengerId
+            && getAfter(
+              /databases/$(database)/documents/passengerNeeds/$(request.resource.data.needId)
+            ).data.matchedRideId == request.resource.data.rideId
+            && getAfter(
+              /databases/$(database)/documents/rides/$(request.resource.data.rideId)
+            ).data.driverId == request.auth.uid
+            && request.resource.data.passengerId in acceptedIds(
+              getAfter(/databases/$(database)/documents/rides/$(request.resource.data.rideId)).data
+            )
+          )
+        );
+
+      // UPDATE
+      allow update: if signedIn()
+        && request.resource.data.passengerId == resource.data.passengerId
+        && request.resource.data.driverId == resource.data.driverId
+        && request.resource.data.rideId == resource.data.rideId
+        && validRequestStatus(request.resource.data.status)
+        && (
+          // PASSENGER OWNER TRANSITIONS
+          (
+            resource.data.passengerId == request.auth.uid
+            && (
+              // Cancel pending request
+              (
+                resource.data.status == 'REQUESTED'
+                && request.resource.data.status in ['CANCELLED', 'CANCELLED_BY_PASSENGER']
+              )
+              ||
+              // Accepted Passenger cancels / didn't travel
+              (
+                resource.data.status == 'ACCEPTED'
+                && request.resource.data.status == 'CANCELLED_BY_PASSENGER'
+              )
+              ||
+              // Passenger confirms completion
+              (
+                resource.data.status in ['ACCEPTED', 'RIDE_STARTED']
+                && request.resource.data.status == 'COMPLETED'
+              )
+            )
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'status',
+                'updatedAt',
+                'cancelledAt',
+                'completedAt',
+                'passengerCompletedAt',
+                'responseAt'
+              ])
+          )
+          ||
+          // DRIVER TRANSITIONS (CLOSED_UNCONFIRMED, CANCELLED_BY_DRIVER — DRIVER CANNOT WRITE COMPLETED FOR PASSENGER!)
+          (
+            resource.data.driverId == request.auth.uid
+            && (
+              (
+                resource.data.status == 'REQUESTED'
+                && request.resource.data.status in ['REJECTED', 'CANCELLED_BY_DRIVER']
+              )
+              ||
+              (
+                resource.data.status in ['ACCEPTED', 'RIDE_STARTED']
+                && request.resource.data.status in ['CLOSED_UNCONFIRMED', 'CANCELLED_BY_DRIVER']
+              )
+            )
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'status',
+                'updatedAt',
+                'responseAt',
+                'startedAt',
+                'cancelledAt',
+                'closedAt'
+              ])
+          )
+          ||
+          // ADMIN OVERRIDE
+          isAdmin()
+        );
+
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // PASSENGER NEEDS
+    // ============================================================
+
+    match /passengerNeeds/{needId} {
+
+      // Ordered LOOKING OR owner OR matched driver OR isAdmin() last
+      allow read: if signedIn()
+        && (
+          resource.data.status == 'LOOKING'
+          || resource.data.passengerId == request.auth.uid
+          || resource.data.get('matchedDriverId', '') == request.auth.uid
+          || isAdmin()
+        );
+
+      allow create: if signedIn()
+        && isActiveUser()
+        && request.resource.data.passengerId == request.auth.uid
+        && validPickupSide(request.resource.data.pickupSide)
+        && validCustomPickup(request.resource.data)
+        && request.resource.data.status in [
+          'LOOKING',
+          'REQUESTED'
+        ];
+
+      allow update: if signedIn()
+        && request.resource.data.passengerId == resource.data.passengerId
+        && validNeedStatus(request.resource.data.status)
+        && (
+          // Passenger edits open need
+          (
+            resource.data.passengerId == request.auth.uid
+            && resource.data.status in ['LOOKING', 'REQUESTED']
+            && request.resource.data.status in ['LOOKING', 'REQUESTED', 'CANCELLED', 'EXPIRED']
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'date',
+                'direction',
+                'commuteWindow',
+                'pickupZone',
+                'pickupSide',
+                'customPickupLocation',
+                'destinationZone',
+                'message',
+                'status',
+                'expiresAt',
+                'updatedAt',
+                'cancelledAt',
+                'expiredAt'
+              ])
+          )
+          ||
+          // Passenger terminal update after match (Completion / Cancellation)
+          (
+            resource.data.passengerId == request.auth.uid
+            && resource.data.status == 'MATCHED'
+            && request.resource.data.status in ['COMPLETED', 'CANCELLED']
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'status',
+                'updatedAt',
+                'completedAt',
+                'cancelledAt'
+              ])
+          )
+          ||
+          // Direct Driver Match
+          (
+            resource.data.status in ['LOOKING', 'REQUESTED']
+            && request.resource.data.status == 'MATCHED'
+            && request.resource.data.matchedDriverId == request.auth.uid
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'status',
+                'matchedDriverId',
+                'matchedRideId',
+                'matchedAt',
+                'updatedAt'
+              ])
+            && getAfter(
+              /databases/$(database)/documents/rides/$(request.resource.data.matchedRideId)
+            ).data.driverId == request.auth.uid
+            && resource.data.passengerId in acceptedIds(
+              getAfter(/databases/$(database)/documents/rides/$(request.resource.data.matchedRideId)).data
+            )
+          )
+          ||
+          // Matched Driver cancels / releases match (Driver CANNOT write COMPLETED)
+          (
+            resource.data.status == 'MATCHED'
+            && resource.data.get('matchedDriverId', '') == request.auth.uid
+            && request.resource.data.status in ['LOOKING', 'CANCELLED']
+            && request.resource.data.get('matchedDriverId', resource.data.matchedDriverId) == resource.data.matchedDriverId
+            && request.resource.data.get('matchedRideId', resource.data.matchedRideId) == resource.data.matchedRideId
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                'status',
+                'matchedDriverId',
+                'matchedRideId',
+                'updatedAt',
+                'cancelledAt'
+              ])
+          )
+          ||
+          isAdmin()
+        );
+
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // SYSTEM CONFIG & ADMIN DATA
+    // ============================================================
+
+    match /systemConfig/{configId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && configId == 'leaderboard' && isActiveUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /co2Records/{recordId} {
+      allow read, create, update: if signedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /adminAnalytics/{analyticsId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ============================================================
+    // ACTIVE PASSENGER RIDES (EXCLUSIVITY LOCK)
+    // ============================================================
+
+    match /activePassengerRides/{passengerId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.passengerId == passengerId
+        && (
+          request.auth.uid == passengerId ||
+          request.resource.data.driverId == request.auth.uid ||
+          isAdmin()
+        )
+        && request.resource.data.keys().hasAll(['rideId', 'requestId', 'passengerId', 'createdAt']);
+      allow delete: if signedIn() && (
+        request.auth.uid == passengerId ||
+        resource.data.driverId == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
